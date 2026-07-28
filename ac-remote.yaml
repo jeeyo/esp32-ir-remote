@@ -14,6 +14,11 @@ substitutions:
   beep_detector_source: components
   # Optional OTA upload password. Empty = no password. Override with !secret.
   ota_password: ""
+  # Gree IR dialect. The Trane/Airlux/Electrolux "YT1F" universal remote covers
+  # several rebadged Gree protocol variants — try these in order if the AC
+  # doesn't respond (watch binary_sensor.ac_beep_confirmed for feedback):
+  # generic, yan, yaa, yac, yac1fb9, yx1ff, yag
+  gree_model: generic
 
 esp32:
   board: m5stick-c
@@ -110,20 +115,34 @@ display:
       it.fill(id(color_bg));
 
       // Current mode
-      std::string mode_str;
-      if (id(current_mode) == 0) {
-        mode_str = "NORMAL";
-      } else if (id(current_mode) == 1) {
-        mode_str = "IR LEARN";
-      } else if (id(current_mode) == 2) {
-        mode_str = "CALIBRATE";
-      }
-      it.printf(width / 2, 5, id(font_small), id(color_cyan), TextAlign::TOP_CENTER, "%s", mode_str.c_str());
+      it.printf(width / 2, 5, id(font_small), id(color_cyan), TextAlign::TOP_CENTER,
+                "%s", id(calibrating) ? "CALIBRATE" : "NORMAL");
 
-      // AC state
-      bool ac_on = id(ac_power_switch).state;
+      // AC mode + action label
+      auto ac_mode = id(ac_climate).mode;
+      auto ac_action = id(ac_climate).action;
+      const char *mode_lbl = "OFF";
+      switch (ac_mode) {
+        case climate::CLIMATE_MODE_COOL: mode_lbl = "COOL"; break;
+        case climate::CLIMATE_MODE_HEAT: mode_lbl = "HEAT"; break;
+        case climate::CLIMATE_MODE_DRY: mode_lbl = "DRY"; break;
+        case climate::CLIMATE_MODE_FAN_ONLY: mode_lbl = "FAN"; break;
+        case climate::CLIMATE_MODE_HEAT_COOL:
+        case climate::CLIMATE_MODE_AUTO: mode_lbl = "AUTO"; break;
+        default: mode_lbl = "OFF"; break;
+      }
+      const char *act_lbl = "idle";
+      switch (ac_action) {
+        case climate::CLIMATE_ACTION_COOLING: act_lbl = "cooling"; break;
+        case climate::CLIMATE_ACTION_HEATING: act_lbl = "heating"; break;
+        case climate::CLIMATE_ACTION_DRYING: act_lbl = "drying"; break;
+        case climate::CLIMATE_ACTION_FAN: act_lbl = "fan"; break;
+        case climate::CLIMATE_ACTION_OFF: act_lbl = "off"; break;
+        default: act_lbl = "idle"; break;
+      }
+      bool ac_on = ac_mode != climate::CLIMATE_MODE_OFF;
       auto state_color = ac_on ? id(color_green) : id(color_red);
-      it.printf(width / 2, 30, id(font_large), state_color, TextAlign::TOP_CENTER, "AC %s", ac_on ? "ON" : "OFF");
+      it.printf(width / 2, 30, id(font_large), state_color, TextAlign::TOP_CENTER, "AC %s", mode_lbl);
 
       // Beep confirmation
       if (id(beep_confirmed).state) {
@@ -135,23 +154,9 @@ display:
       // Last action
       it.printf(width / 2, 80, id(font_small), id(color_white), TextAlign::TOP_CENTER, "%s", id(last_action_text).state.c_str());
 
-      // Thermostat target + action
-      {
-        auto tstat_mode   = id(ac_thermostat).mode;
-        auto tstat_action = id(ac_thermostat).action;
-        float target = id(ac_thermostat).target_temperature;
-        const char* mode_lbl = (tstat_mode == climate::CLIMATE_MODE_COOL) ? "COOL" :
-                               (tstat_mode == climate::CLIMATE_MODE_OFF)  ? "T-OFF" : "---";
-        const char* act_lbl  = (tstat_action == climate::CLIMATE_ACTION_COOLING) ? "cooling" :
-                               (tstat_action == climate::CLIMATE_ACTION_IDLE)    ? "soft-off" : "off";
-        it.printf(width / 2, 95, id(font_small), id(color_cyan), TextAlign::TOP_CENTER,
-                  "%s  set %.1f\xc2\xb0""C  [%s]", mode_lbl, target, act_lbl);
-      }
-
-      // Command failed indicator
-      if (id(command_failed).state) {
-        it.printf(width / 2, 112, id(font_small), id(color_red), TextAlign::TOP_CENTER, "COMMAND FAILED");
-      }
+      // Target temp + action
+      it.printf(width / 2, 95, id(font_small), id(color_cyan), TextAlign::TOP_CENTER,
+                "set %.1f\xc2\xb0""C  [%s]", id(ac_climate).target_temperature, act_lbl);
 
       // ENV III: temperature and humidity (bottom line)
       if (!isnan(id(env_temperature).state) && !isnan(id(env_humidity).state)) {
@@ -177,6 +182,10 @@ microphone:
     channel: left
 
 # --- Beep Detector Custom Component ---
+# Passive confirmation only: climate_ir's transmit happens synchronously
+# inside the platform's control(), with no per-command retry hook exposed to
+# YAML, so this can't gate/retry a transmit like a hand-rolled script could.
+# It just reports whether the AC beeped back after each command.
 beep_detector:
   id: beep_det
   microphone_id: pdm_mic
@@ -191,14 +200,10 @@ beep_detector:
   on_beep_detected:
     - lambda: |-
         if (id(beep_det).is_self_triggered()) {
-          // Our own command was confirmed
           ESP_LOGI("beep", "Self-triggered beep confirmed");
           id(beep_confirmed).publish_state(true);
         } else {
-          // External remote used — toggle state
-          ESP_LOGI("beep", "External beep detected — toggling state");
-          id(ac_power_switch).toggle();
-          id(last_action_text).publish_state("External remote detected");
+          ESP_LOGI("beep", "Beep detected but not self-triggered (external remote or ambient noise)");
         }
 
 # --- IR Transmitter (M5Stack IR Unit TX — Grove pin 1, GPIO32) ---
@@ -208,6 +213,10 @@ remote_transmitter:
   non_blocking: true
 
 # --- IR Receiver (M5Stack IR Unit RX — Grove pin 2, GPIO33) ---
+# Bound to climate.gree below via receiver_id, so it decodes commands from the
+# physical Gree remote and syncs Home Assistant state automatically. `dump:
+# raw` is left on to help diagnose which Gree protocol dialect this unit
+# speaks if climate.gree doesn't recognize what the physical remote sends.
 remote_receiver:
   id: ir_receiver
   pin:
@@ -217,124 +226,47 @@ remote_receiver:
       input: true
   dump:
     - raw
-    - pronto
   tolerance: 25%
   buffer_size: 10000b
   idle: 10ms
 
 # --- Globals ---
 globals:
-  - id: current_mode
-    type: int
-    initial_value: "0"   # 0=normal, 1=ir_learn, 2=calibrate
-  - id: retry_count
-    type: int
-    initial_value: "0"
-  - id: waiting_for_beep
+  - id: calibrating
     type: bool
     initial_value: "false"
 
-# --- Template Switch: AC Power ---
-switch:
-  - platform: template
-    name: "AC Power"
-    id: ac_power_switch
-    optimistic: false
-    restore_mode: RESTORE_DEFAULT_OFF
-    turn_on_action:
-      - script.execute: send_ac_on
-    turn_off_action:
-      - script.execute: send_ac_off
-
-# --- Climate: Thermostat ---
+# --- Climate: Gree IR Remote Transmitter ---
 climate:
-  - platform: thermostat
-    name: "AC Thermostat"
-    id: ac_thermostat
+  - platform: gree
+    name: "AC"
+    id: ac_climate
+    model: ${gree_model}
     sensor: env_temperature
-    min_cooling_off_time: 300s
-    min_cooling_run_time: 180s
-    min_idle_time: 300s
-    cool_deadband: 0.5
-    cool_overrun: 0.5
+    receiver_id: ir_receiver
     visual:
       min_temperature: 18 °C
       max_temperature: 30 °C
       temperature_step: 0.5 °C
-    default_preset: Home
-    preset:
-      - name: Home
-        default_target_temperature_high: 24 °C
-        mode: "OFF"
-    cool_action:
-      - script.execute: send_ac_on
-    idle_action:
-      - script.execute: send_ac_setpoint_high
-    off_mode:
-      - script.execute: send_ac_off
-    cool_mode:
-      - logger.log: "Thermostat: entering COOL mode"
-
-# --- Number: Thermostat tuning (runtime-adjustable hysteresis) ---
-number:
-  - platform: template
-    name: "Cool Deadband"
-    id: cool_deadband_num
-    min_value: 0.1
-    max_value: 2.0
-    step: 0.05
-    initial_value: 0.5
-    unit_of_measurement: "°C"
-    optimistic: true
-    restore_value: true
-    set_action:
-      - lambda: 'id(ac_thermostat).set_cool_deadband(x);'
-
-  - platform: template
-    name: "Cool Overrun"
-    id: cool_overrun_num
-    min_value: 0.1
-    max_value: 2.0
-    step: 0.05
-    initial_value: 0.5
-    unit_of_measurement: "°C"
-    optimistic: true
-    restore_value: true
-    set_action:
-      - lambda: 'id(ac_thermostat).set_cool_overrun(x);'
-
-# --- Button: manual state re-sync (flips switch state without sending IR) ---
-button:
-  - platform: template
-    name: "Re-sync AC State"
-    id: resync_ac_state
-    on_press:
-      - lambda: 'id(ac_power_switch).publish_state(!id(ac_power_switch).state);'
+    on_control:
+      # Arm the beep detector before transmit_state() fires; this runs before
+      # the IR is actually sent, so the confirmation window covers it.
+      - binary_sensor.template.publish:
+          id: beep_confirmed
+          state: false
+      - lambda: 'id(beep_det).set_self_triggered(true);'
       - text_sensor.template.publish:
           id: last_action_text
-          state: "State re-synced (no IR sent)"
-      - logger.log: "AC state manually toggled for re-sync (no IR sent)"
+          state: "Sending command..."
+      - script.execute: confirm_ac_command
 
-# --- Binary Sensors ---
+# --- Button: manual power toggle + calibration entry ---
 binary_sensor:
   # Beep confirmation
   - platform: template
     name: "AC Beep Confirmed"
     id: beep_confirmed
     device_class: sound
-
-  # Command failed
-  - platform: template
-    name: "AC Command Failed"
-    id: command_failed
-    device_class: problem
-    on_press:
-      - climate.control:
-          id: ac_thermostat
-          mode: "OFF"
-      - text_sensor.template.publish:
-          id: last_action_text
-          state: "Thermostat disabled — IR failure"
 
   # Button A (GPIO37) — Toggle AC / Long press: Calibrate
   # GPIO34-39 are input-only with no internal pulls; M5StickC-Plus provides
@@ -354,30 +286,19 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return id(current_mode) == 0;'
+              lambda: 'return !id(calibrating);'
             then:
-              - switch.toggle: ac_power_switch
+              - climate.control:
+                  id: ac_climate
+                  mode: !lambda |-
+                    return id(ac_climate).mode == climate::CLIMATE_MODE_OFF
+                      ? climate::CLIMATE_MODE_COOL
+                      : climate::CLIMATE_MODE_OFF;
     on_multi_click:
       - timing:
           - ON for at least 3s
         then:
           - script.execute: start_calibration
-
-  # Button B (GPIO39) — IR Learn mode (GPIO34-39 input-only, no internal pulls)
-  - platform: gpio
-    pin:
-      number: GPIO39
-      inverted: true
-      mode:
-        input: true
-    id: button_b
-    name: "Button B"
-    internal: true
-    on_click:
-      min_length: 50ms
-      max_length: 1000ms
-      then:
-        - script.execute: toggle_ir_learn
 
 # --- Text Sensors ---
 text_sensor:
@@ -385,7 +306,7 @@ text_sensor:
     name: "Last Action"
     id: last_action_text
 
-# --- Sensors (calibration results) ---
+# --- Sensors (calibration results + ENV HAT + power) ---
 sensor:
   - platform: template
     name: "Beep Frequency"
@@ -434,302 +355,32 @@ sensor:
 
 # --- Scripts ---
 script:
-  # Send AC ON with retry logic
-  - id: send_ac_on
+  # Reports whether the last IR command got an acoustic beep back. No
+  # retries — climate_ir has no hook to gate/resend the transmit.
+  - id: confirm_ac_command
     mode: restart
     then:
-      - globals.set:
-          id: retry_count
-          value: "0"
-      - binary_sensor.template.publish:
-          id: beep_confirmed
-          state: false
-      - binary_sensor.template.publish:
-          id: command_failed
-          state: false
-      - text_sensor.template.publish:
-          id: last_action_text
-          state: "Sending ON..."
-      - script.execute: send_ac_on_attempt
-
-  - id: send_ac_on_attempt
-    mode: restart
-    then:
-      - lambda: |-
-          id(retry_count) += 1;
-          ESP_LOGI("ac", "AC ON attempt %d/3", id(retry_count));
-      # Send IR ON code
-      # Replace with your learned AC IR code
-      - remote_transmitter.transmit_raw:
-          code: [
-            # Placeholder — replace with learned ON code
-            # Example NEC-like pattern for testing:
-            9000, -4500,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -39000
-          ]
-          carrier_frequency: 38000Hz
-      # Set self-triggered flag and listen for beep
-      - lambda: 'id(beep_det).set_self_triggered(true);'
-      - globals.set:
-          id: waiting_for_beep
-          value: "true"
-      - text_sensor.template.publish:
-          id: last_action_text
-          state: !lambda 'return "ON attempt " + to_string(id(retry_count)) + "/3 — listening...";'
-      # Wait for beep (5s window)
-      - delay: 5s
+      - delay: 3s
       - lambda: 'id(beep_det).set_self_triggered(false);'
-      - globals.set:
-          id: waiting_for_beep
-          value: "false"
-      # Check if beep was detected
       - if:
           condition:
             binary_sensor.is_on: beep_confirmed
           then:
-            - switch.template.publish:
-                id: ac_power_switch
-                state: true
             - text_sensor.template.publish:
                 id: last_action_text
-                state: !lambda 'return "ON confirmed (attempt " + to_string(id(retry_count)) + ")";'
+                state: "Command confirmed (beep detected)"
           else:
-            - if:
-                condition:
-                  lambda: 'return id(retry_count) < 3;'
-                then:
-                  - text_sensor.template.publish:
-                      id: last_action_text
-                      state: !lambda 'return "No beep — retrying (" + to_string(id(retry_count)) + "/3)";'
-                  - delay: 1s
-                  - script.execute: send_ac_on_attempt
-                else:
-                  - text_sensor.template.publish:
-                      id: last_action_text
-                      state: "ON FAILED after 3 attempts"
-                  - binary_sensor.template.publish:
-                      id: command_failed
-                      state: true
-                  - globals.set:
-                      id: retry_count
-                      value: "0"
-
-  # Send AC OFF with retry logic
-  - id: send_ac_off
-    mode: restart
-    then:
-      - globals.set:
-          id: retry_count
-          value: "0"
-      - binary_sensor.template.publish:
-          id: beep_confirmed
-          state: false
-      - binary_sensor.template.publish:
-          id: command_failed
-          state: false
-      - text_sensor.template.publish:
-          id: last_action_text
-          state: "Sending OFF..."
-      - script.execute: send_ac_off_attempt
-
-  - id: send_ac_off_attempt
-    mode: restart
-    then:
-      - lambda: |-
-          id(retry_count) += 1;
-          ESP_LOGI("ac", "AC OFF attempt %d/3", id(retry_count));
-      # Send IR OFF code
-      # Replace with your learned AC OFF IR code
-      - remote_transmitter.transmit_raw:
-          code: [
-            # Placeholder — replace with learned OFF code
-            9000, -4500,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -1690, 560, -560, 560, -560, 560, -560,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -560, 560, -1690, 560, -1690, 560, -1690,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -39000
-          ]
-          carrier_frequency: 38000Hz
-      - lambda: 'id(beep_det).set_self_triggered(true);'
-      - globals.set:
-          id: waiting_for_beep
-          value: "true"
-      - text_sensor.template.publish:
-          id: last_action_text
-          state: !lambda 'return "OFF attempt " + to_string(id(retry_count)) + "/3 — listening...";'
-      - delay: 5s
-      - lambda: 'id(beep_det).set_self_triggered(false);'
-      - globals.set:
-          id: waiting_for_beep
-          value: "false"
-      - if:
-          condition:
-            binary_sensor.is_on: beep_confirmed
-          then:
-            - switch.template.publish:
-                id: ac_power_switch
-                state: false
             - text_sensor.template.publish:
                 id: last_action_text
-                state: !lambda 'return "OFF confirmed (attempt " + to_string(id(retry_count)) + ")";'
-          else:
-            - if:
-                condition:
-                  lambda: 'return id(retry_count) < 3;'
-                then:
-                  - text_sensor.template.publish:
-                      id: last_action_text
-                      state: !lambda 'return "No beep — retrying (" + to_string(id(retry_count)) + "/3)";'
-                  - delay: 1s
-                  - script.execute: send_ac_off_attempt
-                else:
-                  - text_sensor.template.publish:
-                      id: last_action_text
-                      state: "OFF FAILED after 3 attempts"
-                  - binary_sensor.template.publish:
-                      id: command_failed
-                      state: true
-                  - globals.set:
-                      id: retry_count
-                      value: "0"
-
-  # Send AC HIGH SETPOINT (soft idle) with retry logic
-  # Keeps the AC unit energised but sets its internal setpoint to max so the
-  # compressor cuts out. The AC stays on; only off_mode sends a full power-off.
-  - id: send_ac_setpoint_high
-    mode: restart
-    then:
-      - globals.set:
-          id: retry_count
-          value: "0"
-      - binary_sensor.template.publish:
-          id: beep_confirmed
-          state: false
-      - binary_sensor.template.publish:
-          id: command_failed
-          state: false
-      - text_sensor.template.publish:
-          id: last_action_text
-          state: "Sending HI-SETPT..."
-      - script.execute: send_ac_setpoint_high_attempt
-
-  - id: send_ac_setpoint_high_attempt
-    mode: restart
-    then:
-      - lambda: |-
-          id(retry_count) += 1;
-          ESP_LOGI("ac", "AC HI-SETPT attempt %d/3", id(retry_count));
-      # Send IR high-setpoint code
-      # Replace with your learned "AC set to max temperature" IR code
-      - remote_transmitter.transmit_raw:
-          code: [
-            # Placeholder — replace with learned HIGH-SETPOINT code
-            # (e.g. AC in COOL mode at 30 °C so compressor doesn't engage)
-            9000, -4500,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -1690, 560, -1690, 560, -1690, 560, -1690,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -560, 560, -560, 560, -560, 560, -560,
-            560, -39000
-          ]
-          carrier_frequency: 38000Hz
-      - lambda: 'id(beep_det).set_self_triggered(true);'
-      - globals.set:
-          id: waiting_for_beep
-          value: "true"
-      - text_sensor.template.publish:
-          id: last_action_text
-          state: !lambda 'return "HI-SETPT attempt " + to_string(id(retry_count)) + "/3 — listening...";'
-      - delay: 5s
-      - lambda: 'id(beep_det).set_self_triggered(false);'
-      - globals.set:
-          id: waiting_for_beep
-          value: "false"
-      - if:
-          condition:
-            binary_sensor.is_on: beep_confirmed
-          then:
-            - switch.template.publish:
-                id: ac_power_switch
-                state: true
-            - text_sensor.template.publish:
-                id: last_action_text
-                state: !lambda 'return "HI-SETPT confirmed (attempt " + to_string(id(retry_count)) + ")";'
-          else:
-            - if:
-                condition:
-                  lambda: 'return id(retry_count) < 3;'
-                then:
-                  - text_sensor.template.publish:
-                      id: last_action_text
-                      state: !lambda 'return "No beep — retrying (" + to_string(id(retry_count)) + "/3)";'
-                  - delay: 1s
-                  - script.execute: send_ac_setpoint_high_attempt
-                else:
-                  - text_sensor.template.publish:
-                      id: last_action_text
-                      state: "HI-SETPT FAILED after 3 attempts"
-                  - binary_sensor.template.publish:
-                      id: command_failed
-                      state: true
-                  - globals.set:
-                      id: retry_count
-                      value: "0"
-
-  # IR Learn mode toggle
-  - id: toggle_ir_learn
-    mode: restart
-    then:
-      - if:
-          condition:
-            lambda: 'return id(current_mode) == 1;'
-          then:
-            # Exit IR learn mode
-            - globals.set:
-                id: current_mode
-                value: "0"
-            - lambda: 'id(beep_det).set_paused(false);'
-            - text_sensor.template.publish:
-                id: last_action_text
-                state: "IR Learn mode OFF"
-            - logger.log: "IR Learn mode disabled"
-          else:
-            # Enter IR learn mode
-            - globals.set:
-                id: current_mode
-                value: "1"
-            - lambda: 'id(beep_det).set_paused(true);'
-            - text_sensor.template.publish:
-                id: last_action_text
-                state: "IR Learn mode ON — point remote"
-            - logger.log:
-                level: INFO
-                format: "IR Learn mode enabled. Point your remote at the M5Stack IR Unit and press buttons. Watch logs for raw codes."
+                state: "No beep detected — check AC / IR alignment"
 
   # Beep calibration
   - id: start_calibration
     mode: restart
     then:
       - globals.set:
-          id: current_mode
-          value: "2"
+          id: calibrating
+          value: "true"
       - lambda: 'id(beep_det).set_paused(true);'
       - text_sensor.template.publish:
           id: last_action_text
@@ -750,8 +401,8 @@ script:
           ESP_LOGI("calibration", "Suggested amplitude_min: %.0f", amp_min);
           ESP_LOGI("calibration", "Suggested amplitude_max: %.0f", amp_max);
       - globals.set:
-          id: current_mode
-          value: "0"
+          id: calibrating
+          value: "false"
       - lambda: 'id(beep_det).set_paused(false);'
       - text_sensor.template.publish:
           id: last_action_text
