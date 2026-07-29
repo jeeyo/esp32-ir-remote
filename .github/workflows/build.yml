@@ -9,5 +9,7 @@ jobs:
   build:
     uses: esphome/workflows/.github/workflows/build.yml@main
     with:
-      files: ac-remote.yaml
+      files: |
+        samples/basic-beep-detector/basic-beep-detector.yaml
+        samples/gree-ac-remote/ac-remote.yaml
       esphome-version: latest

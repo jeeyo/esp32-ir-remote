@@ -105,17 +105,17 @@ void BeepDetector::process_audio(const int16_t *data, int num_samples) {
       uint32_t duration = now - this->beep_start_time_;
       this->beep_active_ = false;
 
-      ESP_LOGD(TAG, "Beep offset (duration: %u ms, amplitude was: %.1f)", duration, magnitude);
+      ESP_LOGD(TAG, "Beep offset (duration: %u ms, amplitude was: %.1f)", (unsigned) duration, magnitude);
 
       if ((int)duration >= this->min_duration_ms_ && (int)duration <= this->max_duration_ms_) {
         // Valid beep detected — defer trigger fire to main loop.
-        ESP_LOGI(TAG, "Valid beep detected! Duration: %u ms", duration);
+        ESP_LOGI(TAG, "Valid beep detected! Duration: %u ms", (unsigned) duration);
         this->last_beep_time_ = now;
         this->beep_detected_pending_ = true;
       } else if ((int)duration > this->max_duration_ms_) {
-        ESP_LOGD(TAG, "Beep too long (%u ms > %d ms), ignoring", duration, this->max_duration_ms_);
+        ESP_LOGD(TAG, "Beep too long (%u ms > %d ms), ignoring", (unsigned) duration, this->max_duration_ms_);
       } else {
-        ESP_LOGD(TAG, "Beep too short (%u ms < %d ms), ignoring", duration, this->min_duration_ms_);
+        ESP_LOGD(TAG, "Beep too short (%u ms < %d ms), ignoring", (unsigned) duration, this->min_duration_ms_);
       }
     }
   }

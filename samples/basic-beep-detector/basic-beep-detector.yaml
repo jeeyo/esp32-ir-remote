@@ -1,0 +1,65 @@
+esphome:
+  name: basic-beep-detector
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# --- External Components ---
+# Where to load the bundled `beep_detector` custom component from.
+# Default = local path (used when this repo is cloned, and by CI).
+# No-clone builds override to `github://jeeyo/esp32-ir-ac-thermostat@<tag>`.
+substitutions:
+  beep_detector_source: ../../components
+
+external_components:
+  - source: ${beep_detector_source}
+    components: [beep_detector]
+
+logger:
+
+# --- I2S PDM Microphone ---
+# Pins shown are placeholders — wire to whatever PDM mic you have and adjust
+# to match. beep_detector works with any `microphone:` platform, not just
+# i2s_audio/PDM.
+i2s_audio:
+  - id: i2s_mic
+    i2s_lrclk_pin: GPIO32
+
+microphone:
+  - platform: i2s_audio
+    id: pdm_mic
+    adc_type: external
+    i2s_audio_id: i2s_mic
+    i2s_din_pin: GPIO33
+    pdm: true
+    bits_per_sample: 16bit
+    channel: left
+
+# --- Beep Detector ---
+# Bare-minimum wiring: every detected beep flips a binary sensor and logs a
+# line. No self-triggered/confirmation logic — see samples/gree-ac-remote
+# for that pattern.
+beep_detector:
+  id: beep_det
+  microphone_id: pdm_mic
+  target_frequency: 4000.0
+  frequency_tolerance: 200.0
+  amplitude_min: 500.0
+  amplitude_max: 5000.0
+  on_beep_detected:
+    - logger.log: "Beep detected!"
+    - binary_sensor.template.publish:
+        id: beep_detected
+        state: true
+    - delay: 500ms
+    - binary_sensor.template.publish:
+        id: beep_detected
+        state: false
+
+binary_sensor:
+  - platform: template
+    name: "Beep Detected"
+    id: beep_detected
+    device_class: sound
