@@ -10,8 +10,8 @@ esphome:
 substitutions:
   # Where to load the bundled `beep_detector` custom component from.
   # Default = local path (used when this repo is cloned, and by CI).
-  # No-clone builds override to `github://jeeyo/esp32-ir-remote@<tag>`.
-  beep_detector_source: components
+  # No-clone builds override to `github://jeeyo/esp32-ir-ac-thermostat@<tag>`.
+  beep_detector_source: ../../components
   # Optional OTA upload password. Empty = no password. Override with !secret.
   ota_password: ""
   # Gree IR dialect. The Trane/Airlux/Electrolux "YT1F" universal remote covers

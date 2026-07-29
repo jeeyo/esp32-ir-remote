@@ -12,11 +12,11 @@ jobs:
   build:
     uses: esphome/workflows/.github/workflows/build.yml@main
     with:
-      files: ac-remote.yaml
+      files: samples/gree-ac-remote/ac-remote.yaml
       esphome-version: latest
       release-version: ${{ github.ref_name }}
-      release-summary: "ESP32 IR Remote — Smart AC controller with beep confirmation and thermostat"
-      release-url: https://github.com/jeeyo/esp32-ir-remote
+      release-summary: "ESP32 IR Remote — Gree AC controller sample built on the beep_detector component"
+      release-url: https://github.com/jeeyo/esp32-ir-ac-thermostat
       combined-name: ac-remote
 
   upload:
