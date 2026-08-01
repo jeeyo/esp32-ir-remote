@@ -29,7 +29,11 @@ void BeepDetector::loop() {
 }
 
 void BeepDetector::on_audio_data(const std::vector<uint8_t> &data) {
-  if (this->paused_ || data.empty()) {
+  // `paused` suppresses normal detection, but must not block calibration —
+  // callers (e.g. samples/gree-ac-remote) pause detection while calibrating
+  // to avoid spurious on_beep_detected triggers, and still need audio fed
+  // through to the calibration sweep below.
+  if ((this->paused_ && !this->calibrating_) || data.empty()) {
     return;
   }
   const int16_t *samples = reinterpret_cast<const int16_t *>(data.data());
