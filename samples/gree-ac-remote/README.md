@@ -6,9 +6,8 @@ This is one worked example of using `beep_detector`; see the [repo README](../..
 
 ## Features
 
-- **Gree Protocol Climate Entity** — full mode/temperature/fan control via ESPHome's built-in `climate_ir` Gree platform; no manual IR code learning required
+- **Gree Protocol Climate Entity** — full mode/temperature/fan control via ESPHome's built-in `climate_ir` Gree platform; no manual IR code learning required, transmitted via the M5StickC-Plus's built-in IR LED (no external IR hardware needed)
 - **Acoustic Confirmation** — listens for the AC's confirmation beep after each command and reports confirmed/unconfirmed (best-effort, no retries)
-- **Physical Remote Sync** — the IR receiver is bound directly into the Gree climate component, so button presses on the AC's own remote update Home Assistant's state automatically
 - **Beep Calibration** — sweep 1–8 kHz to find your AC's exact beep frequency and amplitude
 - **Temperature / Humidity / Pressure** — onboard ENV HAT sensors exposed to Home Assistant
 - **On-device Display** — shows AC mode, target temperature, beep confirmation, and status
@@ -19,35 +18,25 @@ This is one worked example of using `beep_detector`; see the [repo README](../..
 
 | Item | SKU / Notes |
 |------|-------------|
-| M5StickC-Plus | ESP32-PICO, built-in display + PDM mic |
-| M5Stack IR Unit | U002 — IR TX + demodulating RX in one Grove module |
+| M5StickC-Plus | ESP32-PICO, built-in display + PDM mic + built-in IR LED |
 | M5Stack ENV III HAT | SHT30 temp/humidity + QMP6988 pressure |
 
-The ENV III HAT attaches directly to the M5StickC-Plus HAT port (no wiring). The IR Unit connects via the Grove port.
+The ENV III HAT attaches directly to the M5StickC-Plus HAT port (no wiring). IR is sent via the M5StickC-Plus's built-in IR LED — no external IR module needed. The Grove port is unused by this sample and free for other peripherals (e.g. a Grove temperature sensor).
 
 ### Pins
 
 | Function | Pin |
 |---|---|
-| IR LED TX | GPIO32 (Grove pin 1) |
-| IR Receiver | GPIO33 (Grove pin 2) |
+| IR LED TX (built-in) | GPIO9 |
 | PDM Mic CLK | GPIO0 |
 | PDM Mic DATA | GPIO34 |
 | Display SPI | CLK=13, MOSI=15, CS=5, DC=23, RST=18 |
 | AXP192 / ENV HAT I2C | SDA=21, SCL=22 |
 | Button A | GPIO37 (inverted) |
 | Button B | GPIO39 (inverted, unused) |
+| Grove port (free) | GPIO32 / GPIO33 |
 
-### Wiring: M5Stack IR Unit → Grove Port
-
-```
-IR Unit (Grove)    M5StickC-Plus
-───────────────    ─────────────
-  Yellow (TX) ──── GPIO32 (Grove pin 1)
-  White  (RX) ──── GPIO33 (Grove pin 2)
-  Red   (5V)  ──── 5V
-  Black (GND) ──── GND
-```
+> **No physical-remote sync:** the M5StickC-Plus's built-in IR LED is transmit-only (there's no built-in IR receiver), so `climate.ac` no longer decodes button presses from the AC's own remote — this sample is IR-transmit-only. If you need that feature back, wire an external IR receiver module to the Grove port and add a `remote_receiver:` block with `receiver_id` on `climate.gree`.
 
 ---
 
@@ -319,16 +308,14 @@ Mode, target temperature, and fan speed are otherwise set via Home Assistant. Bu
 
 1. HA (or Button A) sends a Gree climate command
 2. `on_control` fires *before* the transmit, arming the beep detector's self-triggered flag and clearing the previous confirmation
-3. `climate_ir` builds and sends the full Gree IR frame via the M5Stack IR Unit (GPIO32) — this happens synchronously, with no built-in retry
+3. `climate_ir` builds and sends the full Gree IR frame via the M5StickC-Plus's built-in IR LED (GPIO9) — this happens synchronously, with no built-in retry
 4. The PDM microphone listens for a confirmation beep for a 3-second window
 5. Beep detected within the amplitude window → `binary_sensor.ac_beep_confirmed` turns on, `text_sensor.last_action` reports "confirmed"
 6. No beep → `text_sensor.last_action` reports "No beep detected" — nothing is resent or disabled automatically; check placement/dialect and retry manually
 
 `climate_ir`'s `transmit_state()` runs synchronously inside the platform's `control()`, with no per-command retry/gate hook exposed to YAML — `beep_detector` here is strictly a passive confirmation signal, not a retry mechanism.
 
-### Physical Remote Sync
-
-The IR receiver (GPIO33) is bound to `climate.ac` via `receiver_id`, so `climate_ir` decodes commands sent by the AC's own physical remote and updates `climate.ac`'s Home Assistant state to match — no beep or custom logic involved.
+This sample is transmit-only: the M5StickC-Plus's built-in IR LED has no matching receiver, so there is no physical-remote-to-HA state sync — `climate.ac` only changes when HA (or Button A) sends a command.
 
 ### Amplitude Window
 
@@ -351,10 +338,6 @@ Multiple identical AC units in adjacent rooms produce the same beep frequency. T
 **False triggers from adjacent rooms:**
 - Narrow the amplitude window (tighter `amplitude_min` / `amplitude_max`)
 - Position the device closer to your target AC unit
-
-**Physical remote presses don't sync HA state:**
-- Confirm the AC's remote uses the same `gree_model` dialect configured on the device — a mismatched dialect means `climate_ir` can't decode it
-- Check `esphome logs ac-remote.yaml` with `dump: raw` (enabled on `remote_receiver`) to confirm the receiver sees pulses at all when the remote is pressed
 
 **Temperature reading seems off:**
 - The SHT30 on the ENV HAT can read 1–2 °C high due to heat from the M5 body

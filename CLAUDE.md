@@ -22,12 +22,12 @@ A custom ESPHome component (`beep_detector`) that listens on any `microphone:` p
 
 - **`climate.gree` is the AC control surface** — `climate.ac` (id `ac_climate`) is a standard ESPHome `climate_ir` platform entity (mode, target temperature, fan) exposed directly to HA. There is no separate custom switch/thermostat layer; HA drives `climate.ac` directly.
 - **`gree_model` substitution picks the IR dialect** — Trane/Airlux/Electrolux "YT1F" remotes cover several rebadged Gree protocol variants (`generic`, `yan`, `yaa`, `yac`, `yac1fb9`, `yx1ff`, `yag`). Default is `generic`; if the AC doesn't respond, try the others and watch `binary_sensor.ac_beep_confirmed` for feedback.
-- **`receiver_id: ir_receiver` on `climate.gree`** — the same `remote_receiver` used for transmit-side diagnostics also feeds `climate_ir`'s built-in listener, so a physical-remote button press is decoded and syncs HA state automatically.
+- **IR TX uses the M5StickC-Plus's built-in IR LED (GPIO9), not the Grove port** — no `remote_receiver`/`receiver_id` exists in this sample: the built-in LED is transmit-only, so `climate.gree` is transmit-only too (no physical-remote-to-HA state sync). The Grove connector (GPIO32/33) is free for other peripherals (e.g. a Grove temperature sensor).
 - **Beep detector is passive-only, not a retry loop** — `climate_ir`'s `transmit_state()` runs synchronously inside the platform's `control()`, with no per-command retry/gate hook exposed to YAML. `on_control` (fires *before* `control()`, i.e. before the IR transmit) arms `beep_det.set_self_triggered(true)`; the `confirm_ac_command` script then waits 3s and just reports confirmed/unconfirmed via `last_action_text` — it never resends or disables anything.
 - **AXP192 comes from `makerwolf/esphome-axp192`** — newer ESPHome no longer has the airy10 top-level `axp192:` schema; it's now a `sensor: platform: axp192` block. Required on M5StickC-Plus or the LCD backlight stays off.
 - **No `!secret` references in `ac-remote.yaml`** — keeps CI green and lets pre-built firmware be configured via captive portal. Users add secrets locally via a wrapper config or direct edit. Do not re-introduce `!secret` without also adding CI handling.
 - **Modes (`calibrating` global, bool)** — `false` = normal (default), `true` = calibrate (Button A long press 3s).
-- **Hardware pins (M5StickC-Plus)** — IR TX GPIO32, IR RX GPIO33, PDM Mic CLK GPIO0 / DATA GPIO34, Display SPI CLK=13/MOSI=15/CS=5/DC=23/RST=18, AXP192/ENV HAT I2C SDA=21/SCL=22, Button A GPIO37 (inverted), Button B GPIO39 (inverted, unused).
+- **Hardware pins (M5StickC-Plus)** — IR TX GPIO9 (built-in LED), PDM Mic CLK GPIO0 / DATA GPIO34, Display SPI CLK=13/MOSI=15/CS=5/DC=23/RST=18, AXP192/ENV HAT I2C SDA=21/SCL=22, Button A GPIO37 (inverted), Button B GPIO39 (inverted, unused), Grove port GPIO32/33 (free/unused).
 
 ## Build
 

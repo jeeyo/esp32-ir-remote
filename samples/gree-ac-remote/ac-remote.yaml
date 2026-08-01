@@ -206,29 +206,14 @@ beep_detector:
           ESP_LOGI("beep", "Beep detected but not self-triggered (external remote or ambient noise)");
         }
 
-# --- IR Transmitter (M5Stack IR Unit TX — Grove pin 1, GPIO32) ---
+# --- IR Transmitter (M5StickC-Plus built-in IR LED — GPIO9) ---
+# Uses the onboard IR blaster instead of an external Grove IR unit, freeing
+# the Grove port. M5StickC-Plus has no built-in IR receiver, so there is no
+# equivalent for physical-remote sync — climate.gree here is transmit-only.
 remote_transmitter:
-  pin: GPIO32
+  pin: GPIO9
   carrier_duty_percent: 50%
   non_blocking: true
-
-# --- IR Receiver (M5Stack IR Unit RX — Grove pin 2, GPIO33) ---
-# Bound to climate.gree below via receiver_id, so it decodes commands from the
-# physical Gree remote and syncs Home Assistant state automatically. `dump:
-# raw` is left on to help diagnose which Gree protocol dialect this unit
-# speaks if climate.gree doesn't recognize what the physical remote sends.
-remote_receiver:
-  id: ir_receiver
-  pin:
-    number: GPIO33
-    inverted: true
-    mode:
-      input: true
-  dump:
-    - raw
-  tolerance: 25%
-  buffer_size: 10000b
-  idle: 10ms
 
 # --- Globals ---
 globals:
@@ -243,7 +228,6 @@ climate:
     id: ac_climate
     model: ${gree_model}
     sensor: env_temperature
-    receiver_id: ir_receiver
     visual:
       min_temperature: 18 °C
       max_temperature: 30 °C
