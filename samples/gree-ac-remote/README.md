@@ -9,7 +9,7 @@ This is one worked example of using `beep_detector`; see the [repo README](../..
 - **Gree Protocol Climate Entity** — full mode/temperature/fan control via ESPHome's built-in `climate_ir` Gree platform; no manual IR code learning required, transmitted via the M5StickC-Plus's built-in IR LED (no external IR hardware needed)
 - **Acoustic Confirmation** — listens for the AC's confirmation beep after each command and reports confirmed/unconfirmed (best-effort, no retries)
 - **Beep Calibration** — sweep 1–8 kHz to find your AC's exact beep frequency and amplitude
-- **Temperature / Humidity / Pressure** — onboard ENV HAT sensors exposed to Home Assistant
+- **Temperature / Humidity / Pressure** — ENV III Unit sensors (Grove I2C) exposed to Home Assistant
 - **On-device Display** — shows AC mode, target temperature, beep confirmation, and status
 
 ## Hardware
@@ -19,9 +19,9 @@ This is one worked example of using `beep_detector`; see the [repo README](../..
 | Item | SKU / Notes |
 |------|-------------|
 | M5StickC-Plus | ESP32-PICO, built-in display + PDM mic + built-in IR LED |
-| M5Stack ENV III HAT | SHT30 temp/humidity + QMP6988 pressure |
+| M5Stack ENV III Unit | SHT30 temp/humidity + QMP6988 pressure, Grove I2C |
 
-The ENV III HAT attaches directly to the M5StickC-Plus HAT port (no wiring). IR is sent via the M5StickC-Plus's built-in IR LED — no external IR module needed. The Grove port is unused by this sample and free for other peripherals (e.g. a Grove temperature sensor).
+IR is sent via the M5StickC-Plus's built-in IR LED — no external IR module needed. The ENV III Unit connects via the Grove port (I2C).
 
 ### Pins
 
@@ -31,12 +31,23 @@ The ENV III HAT attaches directly to the M5StickC-Plus HAT port (no wiring). IR 
 | PDM Mic CLK | GPIO0 |
 | PDM Mic DATA | GPIO34 |
 | Display SPI | CLK=13, MOSI=15, CS=5, DC=23, RST=18 |
-| AXP192 / ENV HAT I2C | SDA=21, SCL=22 |
+| AXP192 I2C (internal HAT bus) | SDA=21, SCL=22 |
+| ENV III Unit I2C (Grove) | SDA=GPIO32, SCL=GPIO33 |
 | Button A | GPIO37 (inverted) |
 | Button B | GPIO39 (inverted, unused) |
-| Grove port (free) | GPIO32 / GPIO33 |
 
-> **No physical-remote sync:** the M5StickC-Plus's built-in IR LED is transmit-only (there's no built-in IR receiver), so `climate.ac` no longer decodes button presses from the AC's own remote — this sample is IR-transmit-only. If you need that feature back, wire an external IR receiver module to the Grove port and add a `remote_receiver:` block with `receiver_id` on `climate.gree`.
+> **No physical-remote sync:** the M5StickC-Plus's built-in IR LED is transmit-only (there's no built-in IR receiver), so `climate.ac` no longer decodes button presses from the AC's own remote — this sample is IR-transmit-only.
+
+### Wiring: M5Stack ENV III Unit → Grove Port
+
+```
+ENV III Unit (Grove)   M5StickC-Plus
+─────────────────────  ─────────────
+  Yellow (SDA) ──────── GPIO32 (Grove pin 1)
+  White  (SCL) ──────── GPIO33 (Grove pin 2)
+  Red    (5V)  ──────── 5V
+  Black  (GND) ──────── GND
+```
 
 ---
 
@@ -280,7 +291,7 @@ automation:
 | Entity | Type | Description |
 |--------|------|-------------|
 | `climate.ac` | Climate | Gree AC control — mode, target temperature, fan |
-| `sensor.temperature` | Sensor | Room temperature from ENV HAT (°C) — also fed to `climate.ac` as current temperature |
+| `sensor.temperature` | Sensor | Room temperature from ENV III Unit (°C) — also fed to `climate.ac` as current temperature |
 | `sensor.humidity` | Sensor | Relative humidity (%) |
 | `sensor.pressure` | Sensor | Barometric pressure (hPa) |
 | `sensor.battery_level` | Sensor | M5StickC-Plus battery charge (%) from AXP192 |
@@ -333,17 +344,19 @@ Multiple identical AC units in adjacent rooms produce the same beep frequency. T
 **No beep detected / always unconfirmed:**
 - Run calibration (Button A long press) to find the correct frequency
 - Check amplitude values in logs — may need a wider `amplitude_min`/`amplitude_max` window
-- Ensure the ENV HAT is not blocking the M5 microphone port
 
 **False triggers from adjacent rooms:**
 - Narrow the amplitude window (tighter `amplitude_min` / `amplitude_max`)
 - Position the device closer to your target AC unit
 
 **Temperature reading seems off:**
-- The SHT30 on the ENV HAT can read 1–2 °C high due to heat from the M5 body
+- The SHT30 on the ENV III Unit can still read slightly high if placed close to the M5 body — give it some cable slack away from the device
 - Apply a fixed offset in the YAML under `env_temperature` sensor: add `filters: - offset: -1.5`
 - Calibrate against a reference thermometer after running the device for 30 minutes
 
 **Display not working:**
 - AXP192 must initialise before the display — check I2C connection at GPIO21/22
-- Verify the ENV HAT is seated correctly (it shares the I2C bus)
+
+**ENV III Unit not detected:**
+- Check the Grove cable is fully seated and wired SDA→GPIO32 / SCL→GPIO33
+- Verify the `grove_i2c` bus (GPIO32/33) isn't shared with another Grove peripheral at a conflicting address
