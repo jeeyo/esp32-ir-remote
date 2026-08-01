@@ -2,7 +2,7 @@
 
 ESPHome firmware for M5StickC-Plus that acts as an IR remote transmitter for a Gree-protocol air conditioner (built for a Trane/Airlux/Electrolux "YT1F" universal remote unit), using ESPHome's built-in [`climate: platform: gree`](https://esphome.io/components/climate/gree/) component. The [`beep_detector`](../../) component gives passive, best-effort confirmation that the AC actually received a command. No cloud, no subscription — exposed as a full `climate` entity in Home Assistant.
 
-This variant transmits IR via the M5StickC-Plus's **built-in IR LED** — no external IR hardware needed, but there's no IR receiver, so `climate.ac` is transmit-only (no physical-remote-to-HA state sync). The Grove connector is free and used here for a Grove-connected ENV III Unit. If you need physical-remote sync, see [`samples/m5stickc-plus-gree-ac-remote-tx-rx`](../m5stickc-plus-gree-ac-remote-tx-rx) instead, which uses an external Grove IR TX+RX module.
+This variant transmits IR via the M5StickC-Plus's **built-in IR LED** — no external IR hardware needed, but there's no IR receiver, so `climate.ac` is transmit-only (no physical-remote-to-HA state sync — note ESPHome's `gree` platform doesn't support that regardless of hardware, see [`samples/m5stickc-plus-gree-ac-remote-tx-rx`](../m5stickc-plus-gree-ac-remote-tx-rx)'s README for why). The Grove connector is free and used here for a Grove-connected ENV III Unit. If you want raw IR capture for diagnosing your AC's dialect, see `tx-rx` instead, which uses an external Grove IR TX+RX module.
 
 This is one worked example of using `beep_detector`; see the [repo README](../../README.md) for the component itself, and [`samples/basic-beep-detector`](../basic-beep-detector) for a minimal, hardware-agnostic starting point.
 
