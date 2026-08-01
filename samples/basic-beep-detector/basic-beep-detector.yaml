@@ -39,7 +39,7 @@ microphone:
 
 # --- Beep Detector ---
 # Bare-minimum wiring: every detected beep flips a binary sensor and logs a
-# line. No self-triggered/confirmation logic — see samples/gree-ac-remote
+# line. No self-triggered/confirmation logic — see samples/m5stickc-plus-gree-ac-remote-tx-only
 # for that pattern.
 beep_detector:
   id: beep_det

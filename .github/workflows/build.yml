@@ -11,5 +11,6 @@ jobs:
     with:
       files: |
         samples/basic-beep-detector/basic-beep-detector.yaml
-        samples/gree-ac-remote/ac-remote.yaml
+        samples/m5stickc-plus-gree-ac-remote-tx-only/ac-remote.yaml
+        samples/m5stickc-plus-gree-ac-remote-tx-rx/ac-remote.yaml
       esphome-version: latest

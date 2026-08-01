@@ -1,15 +1,18 @@
-# Sample: Gree AC Remote (M5StickC-Plus)
+# Sample: Gree AC Remote (M5StickC-Plus, external IR TX+RX)
 
 ESPHome firmware for M5StickC-Plus that acts as an IR remote transmitter for a Gree-protocol air conditioner (built for a Trane/Airlux/Electrolux "YT1F" universal remote unit), using ESPHome's built-in [`climate: platform: gree`](https://esphome.io/components/climate/gree/) component. The [`beep_detector`](../../) component gives passive, best-effort confirmation that the AC actually received a command. No cloud, no subscription — exposed as a full `climate` entity in Home Assistant.
+
+This variant uses an external Grove IR TX+RX module, so it supports **physical remote sync** — button presses on the AC's own remote update `climate.ac`'s state in Home Assistant. If you don't need that and would rather avoid the extra hardware, see [`samples/m5stickc-plus-gree-ac-remote-tx-only`](../m5stickc-plus-gree-ac-remote-tx-only) instead, which uses the M5StickC-Plus's built-in IR LED and frees the Grove port.
 
 This is one worked example of using `beep_detector`; see the [repo README](../../README.md) for the component itself, and [`samples/basic-beep-detector`](../basic-beep-detector) for a minimal, hardware-agnostic starting point.
 
 ## Features
 
-- **Gree Protocol Climate Entity** — full mode/temperature/fan control via ESPHome's built-in `climate_ir` Gree platform; no manual IR code learning required, transmitted via the M5StickC-Plus's built-in IR LED (no external IR hardware needed)
+- **Gree Protocol Climate Entity** — full mode/temperature/fan control via ESPHome's built-in `climate_ir` Gree platform; no manual IR code learning required
 - **Acoustic Confirmation** — listens for the AC's confirmation beep after each command and reports confirmed/unconfirmed (best-effort, no retries)
+- **Physical Remote Sync** — the IR receiver is bound directly into the Gree climate component, so button presses on the AC's own remote update Home Assistant's state automatically
 - **Beep Calibration** — sweep 1–8 kHz to find your AC's exact beep frequency and amplitude
-- **Temperature / Humidity / Pressure** — ENV III Unit sensors (Grove I2C) exposed to Home Assistant
+- **Temperature / Humidity / Pressure** — onboard ENV HAT sensors exposed to Home Assistant
 - **On-device Display** — shows AC mode, target temperature, beep confirmation, and status
 
 ## Hardware
@@ -18,35 +21,34 @@ This is one worked example of using `beep_detector`; see the [repo README](../..
 
 | Item | SKU / Notes |
 |------|-------------|
-| M5StickC-Plus | ESP32-PICO, built-in display + PDM mic + built-in IR LED |
-| M5Stack ENV III Unit | SHT30 temp/humidity + QMP6988 pressure, Grove I2C |
+| M5StickC-Plus | ESP32-PICO, built-in display + PDM mic |
+| M5Stack IR Unit | U002 — IR TX + demodulating RX in one Grove module |
+| M5Stack ENV III HAT | SHT30 temp/humidity + QMP6988 pressure |
 
-IR is sent via the M5StickC-Plus's built-in IR LED — no external IR module needed. The ENV III Unit connects via the Grove port (I2C).
+The ENV III HAT attaches directly to the M5StickC-Plus HAT port (no wiring). The IR Unit connects via the Grove port.
 
 ### Pins
 
 | Function | Pin |
 |---|---|
-| IR LED TX (built-in) | GPIO9 |
+| IR LED TX | GPIO32 (Grove pin 1) |
+| IR Receiver | GPIO33 (Grove pin 2) |
 | PDM Mic CLK | GPIO0 |
 | PDM Mic DATA | GPIO34 |
 | Display SPI | CLK=13, MOSI=15, CS=5, DC=23, RST=18 |
-| AXP192 I2C (internal HAT bus) | SDA=21, SCL=22 |
-| ENV III Unit I2C (Grove) | SDA=GPIO32, SCL=GPIO33 |
+| AXP192 / ENV HAT I2C | SDA=21, SCL=22 |
 | Button A | GPIO37 (inverted) |
 | Button B | GPIO39 (inverted, unused) |
 
-> **No physical-remote sync:** the M5StickC-Plus's built-in IR LED is transmit-only (there's no built-in IR receiver), so `climate.ac` no longer decodes button presses from the AC's own remote — this sample is IR-transmit-only.
-
-### Wiring: M5Stack ENV III Unit → Grove Port
+### Wiring: M5Stack IR Unit → Grove Port
 
 ```
-ENV III Unit (Grove)   M5StickC-Plus
-─────────────────────  ─────────────
-  Yellow (SDA) ──────── GPIO32 (Grove pin 1)
-  White  (SCL) ──────── GPIO33 (Grove pin 2)
-  Red    (5V)  ──────── 5V
-  Black  (GND) ──────── GND
+IR Unit (Grove)    M5StickC-Plus
+───────────────    ─────────────
+  Yellow (TX) ──── GPIO32 (Grove pin 1)
+  White  (RX) ──── GPIO33 (Grove pin 2)
+  Red   (5V)  ──── 5V
+  Black (GND) ──── GND
 ```
 
 ---
@@ -55,7 +57,7 @@ ENV III Unit (Grove)   M5StickC-Plus
 
 No toolchain needed. Download and flash in 2 minutes.
 
-1. Download the latest `ac-remote.bin` from [GitHub Releases](https://github.com/jeeyo/esp32-ir-ac-thermostat/releases/latest)
+1. Download the latest `ac-remote-tx-rx.bin` from [GitHub Releases](https://github.com/jeeyo/esp32-ir-ac-thermostat/releases/latest)
 2. Open [ESPHome Web Installer](https://web.esphome.io/) in Chrome or Edge
 3. Click **Install** → select the `.bin` file → connect your M5StickC-Plus via USB-C
 4. On first boot, the device exposes a WiFi network named **AC-Remote-Fallback** (password `fallback123`). Connect to it with your phone; a captive portal opens where you enter your home WiFi credentials
@@ -117,7 +119,7 @@ packages:
   upstream:
     url: https://github.com/jeeyo/esp32-ir-ac-thermostat
     ref: v0.1.0
-    files: [samples/gree-ac-remote/ac-remote.yaml]
+    files: [samples/m5stickc-plus-gree-ac-remote-tx-rx/ac-remote.yaml]
     refresh: 1d
 
 wifi:
@@ -157,10 +159,10 @@ ESPHome downloads the upstream YAML and the `beep_detector` source on first buil
 
 ### Developer / contributor build
 
-If you're modifying this repo itself, clone it and build `samples/gree-ac-remote/ac-remote.yaml` directly:
+If you're modifying this repo itself, clone it and build `samples/m5stickc-plus-gree-ac-remote-tx-rx/ac-remote.yaml` directly:
 
 ```bash
-esphome run samples/gree-ac-remote/ac-remote.yaml
+esphome run samples/m5stickc-plus-gree-ac-remote-tx-rx/ac-remote.yaml
 ```
 
 The substitutions default to the local `../../components` path, so no wrapper is needed. Drop `wifi:` / `api:` / `ota_password:` overrides into a sibling `secrets.yaml` and patch the YAML, or create a wrapper that points `packages.upstream: !include ac-remote.yaml` at the local file.
@@ -291,7 +293,7 @@ automation:
 | Entity | Type | Description |
 |--------|------|-------------|
 | `climate.ac` | Climate | Gree AC control — mode, target temperature, fan |
-| `sensor.temperature` | Sensor | Room temperature from ENV III Unit (°C) — also fed to `climate.ac` as current temperature |
+| `sensor.temperature` | Sensor | Room temperature from ENV HAT (°C) — also fed to `climate.ac` as current temperature |
 | `sensor.humidity` | Sensor | Relative humidity (%) |
 | `sensor.pressure` | Sensor | Barometric pressure (hPa) |
 | `sensor.battery_level` | Sensor | M5StickC-Plus battery charge (%) from AXP192 |
@@ -319,14 +321,16 @@ Mode, target temperature, and fan speed are otherwise set via Home Assistant. Bu
 
 1. HA (or Button A) sends a Gree climate command
 2. `on_control` fires *before* the transmit, arming the beep detector's self-triggered flag and clearing the previous confirmation
-3. `climate_ir` builds and sends the full Gree IR frame via the M5StickC-Plus's built-in IR LED (GPIO9) — this happens synchronously, with no built-in retry
+3. `climate_ir` builds and sends the full Gree IR frame via the M5Stack IR Unit (GPIO32) — this happens synchronously, with no built-in retry
 4. The PDM microphone listens for a confirmation beep for a 3-second window
 5. Beep detected within the amplitude window → `binary_sensor.ac_beep_confirmed` turns on, `text_sensor.last_action` reports "confirmed"
 6. No beep → `text_sensor.last_action` reports "No beep detected" — nothing is resent or disabled automatically; check placement/dialect and retry manually
 
 `climate_ir`'s `transmit_state()` runs synchronously inside the platform's `control()`, with no per-command retry/gate hook exposed to YAML — `beep_detector` here is strictly a passive confirmation signal, not a retry mechanism.
 
-This sample is transmit-only: the M5StickC-Plus's built-in IR LED has no matching receiver, so there is no physical-remote-to-HA state sync — `climate.ac` only changes when HA (or Button A) sends a command.
+### Physical Remote Sync
+
+The IR receiver (GPIO33) is bound to `climate.ac` via `receiver_id`, so `climate_ir` decodes commands sent by the AC's own physical remote and updates `climate.ac`'s Home Assistant state to match — no beep or custom logic involved.
 
 ### Amplitude Window
 
@@ -344,19 +348,21 @@ Multiple identical AC units in adjacent rooms produce the same beep frequency. T
 **No beep detected / always unconfirmed:**
 - Run calibration (Button A long press) to find the correct frequency
 - Check amplitude values in logs — may need a wider `amplitude_min`/`amplitude_max` window
+- Ensure the ENV HAT is not blocking the M5 microphone port
 
 **False triggers from adjacent rooms:**
 - Narrow the amplitude window (tighter `amplitude_min` / `amplitude_max`)
 - Position the device closer to your target AC unit
 
+**Physical remote presses don't sync HA state:**
+- Confirm the AC's remote uses the same `gree_model` dialect configured on the device — a mismatched dialect means `climate_ir` can't decode it
+- Check `esphome logs ac-remote.yaml` with `dump: raw` (enabled on `remote_receiver`) to confirm the receiver sees pulses at all when the remote is pressed
+
 **Temperature reading seems off:**
-- The SHT30 on the ENV III Unit can still read slightly high if placed close to the M5 body — give it some cable slack away from the device
+- The SHT30 on the ENV HAT can read 1–2 °C high due to heat from the M5 body
 - Apply a fixed offset in the YAML under `env_temperature` sensor: add `filters: - offset: -1.5`
 - Calibrate against a reference thermometer after running the device for 30 minutes
 
 **Display not working:**
 - AXP192 must initialise before the display — check I2C connection at GPIO21/22
-
-**ENV III Unit not detected:**
-- Check the Grove cable is fully seated and wired SDA→GPIO32 / SCL→GPIO33
-- Verify the `grove_i2c` bus (GPIO32/33) isn't shared with another Grove peripheral at a conflicting address
+- Verify the ENV HAT is seated correctly (it shares the I2C bus)

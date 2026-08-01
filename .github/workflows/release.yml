@@ -9,20 +9,38 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-tx-only:
     uses: esphome/workflows/.github/workflows/build.yml@main
     with:
-      files: samples/gree-ac-remote/ac-remote.yaml
+      files: samples/m5stickc-plus-gree-ac-remote-tx-only/ac-remote.yaml
       esphome-version: latest
       release-version: ${{ github.ref_name }}
-      release-summary: "ESP32 IR Remote — Gree AC controller sample built on the beep_detector component"
+      release-summary: "ESP32 IR Remote — Gree AC controller (internal IR TX only) sample built on the beep_detector component"
       release-url: https://github.com/jeeyo/esp32-ir-ac-thermostat
-      combined-name: ac-remote
+      combined-name: ac-remote-tx-only
 
-  upload:
-    needs: build
+  upload-tx-only:
+    needs: build-tx-only
     uses: esphome/workflows/.github/workflows/upload-to-gh-release.yml@main
     permissions:
       contents: write
     with:
-      version: ${{ needs.build.outputs.version }}
+      version: ${{ needs.build-tx-only.outputs.version }}
+
+  build-tx-rx:
+    uses: esphome/workflows/.github/workflows/build.yml@main
+    with:
+      files: samples/m5stickc-plus-gree-ac-remote-tx-rx/ac-remote.yaml
+      esphome-version: latest
+      release-version: ${{ github.ref_name }}
+      release-summary: "ESP32 IR Remote — Gree AC controller (Grove IR TX+RX) sample built on the beep_detector component"
+      release-url: https://github.com/jeeyo/esp32-ir-ac-thermostat
+      combined-name: ac-remote-tx-rx
+
+  upload-tx-rx:
+    needs: build-tx-rx
+    uses: esphome/workflows/.github/workflows/upload-to-gh-release.yml@main
+    permissions:
+      contents: write
+    with:
+      version: ${{ needs.build-tx-rx.outputs.version }}

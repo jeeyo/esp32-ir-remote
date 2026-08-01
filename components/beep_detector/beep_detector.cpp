@@ -30,7 +30,7 @@ void BeepDetector::loop() {
 
 void BeepDetector::on_audio_data(const std::vector<uint8_t> &data) {
   // `paused` suppresses normal detection, but must not block calibration —
-  // callers (e.g. samples/gree-ac-remote) pause detection while calibrating
+  // callers (e.g. samples/m5stickc-plus-gree-ac-remote-tx-only) pause detection while calibrating
   // to avoid spurious on_beep_detected triggers, and still need audio fed
   // through to the calibration sweep below.
   if ((this->paused_ && !this->calibrating_) || data.empty()) {
