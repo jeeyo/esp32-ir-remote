@@ -57,7 +57,8 @@ logger:
 # Two buses: the internal HAT-port bus for the AXP192 PMU, and the Grove
 # connector bus for the ENV III Unit (SHT30 + QMP6988).
 i2c:
-  - sda: GPIO21
+  - id: hat_i2c
+    sda: GPIO21
     scl: GPIO22
   - id: grove_i2c
     sda: GPIO32
@@ -340,6 +341,7 @@ sensor:
     id: pmu
     model: M5STICKC
     address: 0x34
+    i2c_id: hat_i2c
     update_interval: 60s
     battery_level:
       name: "Battery Level"

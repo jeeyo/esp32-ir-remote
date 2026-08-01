@@ -33,7 +33,7 @@ A custom ESPHome component (`beep_detector`) that listens on any `microphone:` p
 #### `m5stickc-plus-gree-ac-remote-tx-only`
 
 - **IR TX uses the M5StickC-Plus's built-in IR LED (GPIO9), not the Grove port** — no `remote_receiver`/`receiver_id` exists: the built-in LED is transmit-only, so `climate.gree` is transmit-only too (no physical-remote-to-HA state sync).
-- **Two I2C buses** — the internal HAT-port bus (GPIO21/22) carries only the AXP192 PMU; the Grove connector (GPIO32/33, bus id `grove_i2c`) carries the ENV III Unit (`sht3xd` + `qmp6988`, both set `i2c_id: grove_i2c`). Keep them separate — don't merge the ENV sensors back onto the default bus or `i2c_id` needs updating on both.
+- **Two I2C buses, both explicitly `id`'d** — the internal HAT-port bus (`hat_i2c`, GPIO21/22) carries only the AXP192 PMU (`i2c_id: hat_i2c`); the Grove connector (`grove_i2c`, GPIO32/33) carries the ENV III Unit (`sht3xd` + `qmp6988`, both `i2c_id: grove_i2c`). ESPHome requires every bus to have an `id` once more than one `i2c:` bus is declared — an unnamed first bus fails CI. Keep them separate and keep `i2c_id` set on every consumer.
 - **Hardware pins (M5StickC-Plus)** — IR TX GPIO9 (built-in LED), PDM Mic CLK GPIO0 / DATA GPIO34, Display SPI CLK=13/MOSI=15/CS=5/DC=23/RST=18, AXP192 I2C (HAT bus) SDA=21/SCL=22, ENV III Unit I2C (Grove bus) SDA=32/SCL=33, Button A GPIO37 (inverted), Button B GPIO39 (inverted, unused).
 
 #### `m5stickc-plus-gree-ac-remote-tx-rx`
