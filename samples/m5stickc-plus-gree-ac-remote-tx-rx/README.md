@@ -1,6 +1,8 @@
-# Sample: Gree AC Remote (M5StickC-Plus)
+# Sample: Gree AC Remote (M5StickC-Plus, external IR TX+RX)
 
 ESPHome firmware for M5StickC-Plus that acts as an IR remote transmitter for a Gree-protocol air conditioner (built for a Trane/Airlux/Electrolux "YT1F" universal remote unit), using ESPHome's built-in [`climate: platform: gree`](https://esphome.io/components/climate/gree/) component. The [`beep_detector`](../../) component gives passive, best-effort confirmation that the AC actually received a command. No cloud, no subscription — exposed as a full `climate` entity in Home Assistant.
+
+This variant uses an external Grove IR TX+RX module, so it supports **physical remote sync** — button presses on the AC's own remote update `climate.ac`'s state in Home Assistant. If you don't need that and would rather avoid the extra hardware, see [`samples/m5stickc-plus-gree-ac-remote-tx-only`](../m5stickc-plus-gree-ac-remote-tx-only) instead, which uses the M5StickC-Plus's built-in IR LED and frees the Grove port.
 
 This is one worked example of using `beep_detector`; see the [repo README](../../README.md) for the component itself, and [`samples/basic-beep-detector`](../basic-beep-detector) for a minimal, hardware-agnostic starting point.
 
@@ -55,7 +57,7 @@ IR Unit (Grove)    M5StickC-Plus
 
 No toolchain needed. Download and flash in 2 minutes.
 
-1. Download the latest `ac-remote.bin` from [GitHub Releases](https://github.com/jeeyo/esp32-ir-ac-thermostat/releases/latest)
+1. Download the latest `ac-remote-tx-rx.bin` from [GitHub Releases](https://github.com/jeeyo/esp32-ir-ac-thermostat/releases/latest)
 2. Open [ESPHome Web Installer](https://web.esphome.io/) in Chrome or Edge
 3. Click **Install** → select the `.bin` file → connect your M5StickC-Plus via USB-C
 4. On first boot, the device exposes a WiFi network named **AC-Remote-Fallback** (password `fallback123`). Connect to it with your phone; a captive portal opens where you enter your home WiFi credentials
@@ -117,7 +119,7 @@ packages:
   upstream:
     url: https://github.com/jeeyo/esp32-ir-ac-thermostat
     ref: v0.1.0
-    files: [samples/gree-ac-remote/ac-remote.yaml]
+    files: [samples/m5stickc-plus-gree-ac-remote-tx-rx/ac-remote.yaml]
     refresh: 1d
 
 wifi:
@@ -157,10 +159,10 @@ ESPHome downloads the upstream YAML and the `beep_detector` source on first buil
 
 ### Developer / contributor build
 
-If you're modifying this repo itself, clone it and build `samples/gree-ac-remote/ac-remote.yaml` directly:
+If you're modifying this repo itself, clone it and build `samples/m5stickc-plus-gree-ac-remote-tx-rx/ac-remote.yaml` directly:
 
 ```bash
-esphome run samples/gree-ac-remote/ac-remote.yaml
+esphome run samples/m5stickc-plus-gree-ac-remote-tx-rx/ac-remote.yaml
 ```
 
 The substitutions default to the local `../../components` path, so no wrapper is needed. Drop `wifi:` / `api:` / `ota_password:` overrides into a sibling `secrets.yaml` and patch the YAML, or create a wrapper that points `packages.upstream: !include ac-remote.yaml` at the local file.

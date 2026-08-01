@@ -1,0 +1,402 @@
+esphome:
+  name: ac-remote
+  friendly_name: "AC Remote"
+  platformio_options:
+    board_build.f_cpu: 240000000L
+
+# --- Substitutions ---
+# Override these in a wrapper YAML to build without cloning the repo and to
+# bake in your secrets at compile time. See README § "Setup from Source".
+substitutions:
+  # Where to load the bundled `beep_detector` custom component from.
+  # Default = local path (used when this repo is cloned, and by CI).
+  # No-clone builds override to `github://jeeyo/esp32-ir-ac-thermostat@<tag>`.
+  beep_detector_source: ../../components
+  # Optional OTA upload password. Empty = no password. Override with !secret.
+  ota_password: ""
+  # Gree IR dialect. The Trane/Airlux/Electrolux "YT1F" universal remote covers
+  # several rebadged Gree protocol variants — try these in order if the AC
+  # doesn't respond (watch binary_sensor.ac_beep_confirmed for feedback):
+  # generic, yan, yaa, yac, yac1fb9, yx1ff, yag
+  gree_model: generic
+
+esp32:
+  board: m5stick-c
+  framework:
+    type: arduino
+
+# --- External Components ---
+external_components:
+  - source: github://makerwolf/esphome-axp192@master
+    components: [axp192]
+    refresh: 1d
+  - source: ${beep_detector_source}
+    components: [beep_detector]
+
+# --- Network ---
+# WiFi credentials are intentionally not in this file. Configure WiFi via the
+# fallback AP + captive portal on first boot, or extend this YAML with your
+# own secrets. See README § "Adding Your Secrets".
+wifi:
+  ap:
+    ssid: "AC-Remote-Fallback"
+    password: "fallback123"
+
+captive_portal:
+
+api:
+
+ota:
+  - platform: esphome
+    password: ${ota_password}
+
+logger:
+  level: DEBUG
+
+# --- I2C ---
+# Two buses: the internal HAT-port bus for the AXP192 PMU, and the Grove
+# connector bus for the ENV III Unit (SHT30 + QMP6988).
+i2c:
+  - id: hat_i2c
+    sda: GPIO21
+    scl: GPIO22
+  - id: grove_i2c
+    sda: GPIO32
+    scl: GPIO33
+
+# --- SPI + Display ---
+spi:
+  clk_pin: GPIO13
+  mosi_pin: GPIO15
+
+font:
+  - file: "fonts/roboto.ttf"
+    id: font_medium
+    size: 16
+  - file: "fonts/roboto.ttf"
+    id: font_small
+    size: 12
+  - file: "fonts/roboto.ttf"
+    id: font_large
+    size: 24
+
+color:
+  - id: color_white
+    white: 100%
+  - id: color_green
+    red: 0%
+    green: 100%
+    blue: 0%
+  - id: color_red
+    red: 100%
+    green: 0%
+    blue: 0%
+  - id: color_yellow
+    red: 100%
+    green: 100%
+    blue: 0%
+  - id: color_cyan
+    red: 0%
+    green: 100%
+    blue: 100%
+  - id: color_bg
+    red: 0%
+    green: 0%
+    blue: 0%
+
+display:
+  - platform: st7789v
+    id: main_display
+    cs_pin: GPIO5
+    dc_pin: GPIO23
+    reset_pin: GPIO18
+    model: "TTGO TDisplay 135x240"
+    rotation: 270
+    update_interval: 1s
+    lambda: |-
+      auto width = it.get_width();
+      auto height = it.get_height();
+
+      // Background
+      it.fill(id(color_bg));
+
+      // Current mode
+      it.printf(width / 2, 5, id(font_small), id(color_cyan), TextAlign::TOP_CENTER,
+                "%s", id(calibrating) ? "CALIBRATE" : "NORMAL");
+
+      // AC mode + action label
+      auto ac_mode = id(ac_climate).mode;
+      auto ac_action = id(ac_climate).action;
+      const char *mode_lbl = "OFF";
+      switch (ac_mode) {
+        case climate::CLIMATE_MODE_COOL: mode_lbl = "COOL"; break;
+        case climate::CLIMATE_MODE_HEAT: mode_lbl = "HEAT"; break;
+        case climate::CLIMATE_MODE_DRY: mode_lbl = "DRY"; break;
+        case climate::CLIMATE_MODE_FAN_ONLY: mode_lbl = "FAN"; break;
+        case climate::CLIMATE_MODE_HEAT_COOL:
+        case climate::CLIMATE_MODE_AUTO: mode_lbl = "AUTO"; break;
+        default: mode_lbl = "OFF"; break;
+      }
+      const char *act_lbl = "idle";
+      switch (ac_action) {
+        case climate::CLIMATE_ACTION_COOLING: act_lbl = "cooling"; break;
+        case climate::CLIMATE_ACTION_HEATING: act_lbl = "heating"; break;
+        case climate::CLIMATE_ACTION_DRYING: act_lbl = "drying"; break;
+        case climate::CLIMATE_ACTION_FAN: act_lbl = "fan"; break;
+        case climate::CLIMATE_ACTION_OFF: act_lbl = "off"; break;
+        default: act_lbl = "idle"; break;
+      }
+      bool ac_on = ac_mode != climate::CLIMATE_MODE_OFF;
+      auto state_color = ac_on ? id(color_green) : id(color_red);
+      it.printf(width / 2, 30, id(font_large), state_color, TextAlign::TOP_CENTER, "AC %s", mode_lbl);
+
+      // Beep confirmation
+      if (id(beep_confirmed).state) {
+        it.printf(width / 2, 60, id(font_small), id(color_green), TextAlign::TOP_CENTER, "Confirmed");
+      } else {
+        it.printf(width / 2, 60, id(font_small), id(color_yellow), TextAlign::TOP_CENTER, "Unconfirmed");
+      }
+
+      // Last action
+      it.printf(width / 2, 80, id(font_small), id(color_white), TextAlign::TOP_CENTER, "%s", id(last_action_text).state.c_str());
+
+      // Target temp + action
+      it.printf(width / 2, 95, id(font_small), id(color_cyan), TextAlign::TOP_CENTER,
+                "set %.1f\xc2\xb0""C  [%s]", id(ac_climate).target_temperature, act_lbl);
+
+      // ENV III: temperature and humidity (bottom line)
+      if (!isnan(id(env_temperature).state) && !isnan(id(env_humidity).state)) {
+        it.printf(width / 2, 125, id(font_small), id(color_white), TextAlign::TOP_CENTER,
+                  "%.1f\xc2\xb0""C  %.0f%%", id(env_temperature).state, id(env_humidity).state);
+      }
+
+# --- I2S Audio (PDM Microphone SPM1423) ---
+# PDM uses a single clock line (i2s_lrclk_pin) and a data line. Newer ESPHome
+# (2025.11+) no longer accepts the BCLK-shares-LRCLK trick, so omit i2s_bclk_pin.
+i2s_audio:
+  - id: i2s_mic
+    i2s_lrclk_pin: GPIO0
+
+microphone:
+  - platform: i2s_audio
+    id: pdm_mic
+    adc_type: external
+    i2s_audio_id: i2s_mic
+    i2s_din_pin: GPIO34
+    pdm: true
+    bits_per_sample: 16bit
+    channel: left
+
+# --- Beep Detector Custom Component ---
+# Passive confirmation only: climate_ir's transmit happens synchronously
+# inside the platform's control(), with no per-command retry hook exposed to
+# YAML, so this can't gate/retry a transmit like a hand-rolled script could.
+# It just reports whether the AC beeped back after each command.
+beep_detector:
+  id: beep_det
+  microphone_id: pdm_mic
+  target_frequency: 4000.0
+  frequency_tolerance: 200.0
+  amplitude_min: 500.0
+  amplitude_max: 5000.0
+  min_duration_ms: 50
+  max_duration_ms: 500
+  sample_rate: 16000
+  cooldown_ms: 5000
+  on_beep_detected:
+    - lambda: |-
+        if (id(beep_det).is_self_triggered()) {
+          ESP_LOGI("beep", "Self-triggered beep confirmed");
+          id(beep_confirmed).publish_state(true);
+        } else {
+          ESP_LOGI("beep", "Beep detected but not self-triggered (external remote or ambient noise)");
+        }
+
+# --- IR Transmitter (M5StickC-Plus built-in IR LED — GPIO9) ---
+# Uses the onboard IR blaster instead of an external Grove IR unit, freeing
+# the Grove port. M5StickC-Plus has no built-in IR receiver, so there is no
+# equivalent for physical-remote sync — climate.gree here is transmit-only.
+remote_transmitter:
+  pin: GPIO9
+  carrier_duty_percent: 50%
+  non_blocking: true
+
+# --- Globals ---
+globals:
+  - id: calibrating
+    type: bool
+    initial_value: "false"
+
+# --- Climate: Gree IR Remote Transmitter ---
+climate:
+  - platform: gree
+    name: "AC"
+    id: ac_climate
+    model: ${gree_model}
+    sensor: env_temperature
+    visual:
+      min_temperature: 18 °C
+      max_temperature: 30 °C
+      temperature_step: 0.5 °C
+    on_control:
+      # Arm the beep detector before transmit_state() fires; this runs before
+      # the IR is actually sent, so the confirmation window covers it.
+      - binary_sensor.template.publish:
+          id: beep_confirmed
+          state: false
+      - lambda: 'id(beep_det).set_self_triggered(true);'
+      - text_sensor.template.publish:
+          id: last_action_text
+          state: "Sending command..."
+      - script.execute: confirm_ac_command
+
+# --- Button: manual power toggle + calibration entry ---
+binary_sensor:
+  # Beep confirmation
+  - platform: template
+    name: "AC Beep Confirmed"
+    id: beep_confirmed
+    device_class: sound
+
+  # Button A (GPIO37) — Toggle AC / Long press: Calibrate
+  # GPIO34-39 are input-only with no internal pulls; M5StickC-Plus provides
+  # external pullups on the PCB.
+  - platform: gpio
+    pin:
+      number: GPIO37
+      inverted: true
+      mode:
+        input: true
+    id: button_a
+    name: "Button A"
+    internal: true
+    on_click:
+      min_length: 50ms
+      max_length: 1000ms
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(calibrating);'
+            then:
+              - climate.control:
+                  id: ac_climate
+                  mode: !lambda |-
+                    return id(ac_climate).mode == climate::CLIMATE_MODE_OFF
+                      ? climate::CLIMATE_MODE_COOL
+                      : climate::CLIMATE_MODE_OFF;
+    on_multi_click:
+      - timing:
+          - ON for at least 3s
+        then:
+          - script.execute: start_calibration
+
+# --- Text Sensors ---
+text_sensor:
+  - platform: template
+    name: "Last Action"
+    id: last_action_text
+
+# --- Sensors (calibration results + ENV HAT + power) ---
+sensor:
+  - platform: template
+    name: "Beep Frequency"
+    id: beep_frequency_sensor
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+
+  - platform: template
+    name: "Beep Amplitude"
+    id: beep_amplitude_sensor
+    accuracy_decimals: 0
+
+  - platform: sht3xd
+    temperature:
+      name: "Temperature"
+      id: env_temperature
+      unit_of_measurement: "°C"
+      accuracy_decimals: 1
+    humidity:
+      name: "Humidity"
+      id: env_humidity
+      unit_of_measurement: "%"
+      accuracy_decimals: 1
+    address: 0x44
+    i2c_id: grove_i2c
+    update_interval: 15s
+
+  - platform: qmp6988
+    pressure:
+      name: "Pressure"
+      id: env_pressure
+      unit_of_measurement: "hPa"
+      accuracy_decimals: 1
+    address: 0x70
+    i2c_id: grove_i2c
+    update_interval: 60s
+
+  # AXP192 power management (M5StickC-Plus): sets LDO voltages for the LCD
+  # backlight, exposes battery telemetry. Must be present or the display
+  # backlight stays off.
+  - platform: axp192
+    id: pmu
+    model: M5STICKC
+    address: 0x34
+    i2c_id: hat_i2c
+    update_interval: 60s
+    battery_level:
+      name: "Battery Level"
+
+# --- Scripts ---
+script:
+  # Reports whether the last IR command got an acoustic beep back. No
+  # retries — climate_ir has no hook to gate/resend the transmit.
+  - id: confirm_ac_command
+    mode: restart
+    then:
+      - delay: 3s
+      - lambda: 'id(beep_det).set_self_triggered(false);'
+      - if:
+          condition:
+            binary_sensor.is_on: beep_confirmed
+          then:
+            - text_sensor.template.publish:
+                id: last_action_text
+                state: "Command confirmed (beep detected)"
+          else:
+            - text_sensor.template.publish:
+                id: last_action_text
+                state: "No beep detected — check AC / IR alignment"
+
+  # Beep calibration
+  - id: start_calibration
+    mode: restart
+    then:
+      - globals.set:
+          id: calibrating
+          value: "true"
+      - lambda: 'id(beep_det).set_paused(true);'
+      - text_sensor.template.publish:
+          id: last_action_text
+          state: "Calibrating... trigger AC beep"
+      - lambda: 'id(beep_det).start_calibration();'
+      # Wait for calibration window
+      - delay: 10s
+      - lambda: |-
+          auto result = id(beep_det).finish_calibration();
+          id(beep_frequency_sensor).publish_state(result.frequency);
+          id(beep_amplitude_sensor).publish_state(result.amplitude);
+
+          // Suggest amplitude window (±30%)
+          float amp_min = result.amplitude * 0.7f;
+          float amp_max = result.amplitude * 1.3f;
+          ESP_LOGI("calibration", "Peak frequency: %.0f Hz", result.frequency);
+          ESP_LOGI("calibration", "Peak amplitude: %.0f", result.amplitude);
+          ESP_LOGI("calibration", "Suggested amplitude_min: %.0f", amp_min);
+          ESP_LOGI("calibration", "Suggested amplitude_max: %.0f", amp_max);
+      - globals.set:
+          id: calibrating
+          value: "false"
+      - lambda: 'id(beep_det).set_paused(false);'
+      - text_sensor.template.publish:
+          id: last_action_text
+          state: "Calibration done — check logs"

@@ -80,23 +80,24 @@ Rather than guessing `target_frequency`/`amplitude_min`/`amplitude_max` for a sp
 3. Call `id(beep_det).finish_calibration()` — logs the peak frequency/amplitude seen during the sweep, plus a suggested `amplitude_min`/`amplitude_max` (±30% of peak)
 4. Copy those values into your `beep_detector:` config and reflash
 
-The [`samples/gree-ac-remote`](samples/gree-ac-remote) sample wires this up to a physical button and 10-second timer if you want a working reference.
+The [`samples/m5stickc-plus-gree-ac-remote-tx-only`](samples/m5stickc-plus-gree-ac-remote-tx-only) sample wires this up to a physical button and 10-second timer if you want a working reference.
 
 ## Samples
 
 | Sample | What it shows |
 |---|---|
 | [`samples/basic-beep-detector`](samples/basic-beep-detector) | Bare-minimum usage on a generic ESP32 board: a PDM mic feeding `beep_detector`, toggling a binary sensor on each beep. Start here if you're integrating the component into your own project. |
-| [`samples/gree-ac-remote`](samples/gree-ac-remote) | Full real-world build: an M5StickC-Plus driving a Gree-protocol air conditioner over IR (ESPHome's built-in `climate: platform: gree`), using `beep_detector` as passive, best-effort confirmation that each command was received. Includes hardware BOM, wiring, and Home Assistant integration. |
+| [`samples/m5stickc-plus-gree-ac-remote-tx-only`](samples/m5stickc-plus-gree-ac-remote-tx-only) | Full real-world build: an M5StickC-Plus driving a Gree-protocol air conditioner over IR (ESPHome's built-in `climate: platform: gree`) via its **built-in IR LED** (transmit-only, no physical-remote sync), using `beep_detector` as passive, best-effort confirmation that each command was received. Grove port is free for a Grove ENV III Unit. |
+| [`samples/m5stickc-plus-gree-ac-remote-tx-rx`](samples/m5stickc-plus-gree-ac-remote-tx-rx) | Same build, but using an external Grove IR TX+RX module instead of the built-in LED, adding physical-remote-to-HA state sync at the cost of the Grove port (ENV III sensors live on the internal HAT port instead). |
 
-Each sample is a self-contained ESPHome config; see its own README for build/flash instructions specific to that hardware. Both are built on every push/PR by [`.github/workflows/build.yml`](.github/workflows/build.yml).
+Each sample is a self-contained ESPHome config; see its own README for build/flash instructions specific to that hardware. All are built on every push/PR by [`.github/workflows/build.yml`](.github/workflows/build.yml).
 
 ## Repository layout
 
 - `components/beep_detector/` — the component: `__init__.py` (schema/codegen), `beep_detector.h`/`.cpp` (Goertzel detector, calibration sweep)
 - `samples/` — example ESPHome configs built on the component (see above)
 - `.github/workflows/build.yml` — CI build of all samples on push/PR
-- `.github/workflows/release.yml` — builds and publishes the `gree-ac-remote` sample firmware to a GitHub release on `v*` tags
+- `.github/workflows/release.yml` — builds and publishes both `gree-ac-remote` sample variants (`tx-only` and `tx-rx`) to a GitHub release on `v*` tags
 
 ## Contributing
 
