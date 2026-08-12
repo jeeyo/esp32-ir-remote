@@ -308,6 +308,20 @@ text_sensor:
 
 # --- Sensors (calibration results + ENV HAT + power) ---
 sensor:
+  # AXP192 power management (M5StickC-Plus): sets LDO/DCDC voltages for the
+  # LCD backlight and the HAT port power rail. Declared first because it ties
+  # with the ENV III sensors below on setup_priority::DATA — ESPHome's
+  # setup() breaks priority ties by YAML declaration order, so AXP192 must
+  # come first or sht3xd/qmp6988 probe an unpowered bus during their own
+  # setup(), mark_failed(), and never report again.
+  - platform: axp192
+    id: pmu
+    model: M5STICKC
+    address: 0x34
+    update_interval: 60s
+    battery_level:
+      name: "Battery Level"
+
   - platform: template
     name: "Beep Frequency"
     id: beep_frequency_sensor
@@ -341,17 +355,6 @@ sensor:
       accuracy_decimals: 1
     address: 0x70
     update_interval: 60s
-
-  # AXP192 power management (M5StickC-Plus): sets LDO voltages for the LCD
-  # backlight, exposes battery telemetry. Must be present or the display
-  # backlight stays off.
-  - platform: axp192
-    id: pmu
-    model: M5STICKC
-    address: 0x34
-    update_interval: 60s
-    battery_level:
-      name: "Battery Level"
 
 # --- Scripts ---
 script:
