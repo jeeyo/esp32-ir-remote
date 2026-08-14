@@ -69,13 +69,11 @@ float BeepDetector::goertzel_magnitude(const int16_t *samples, int num_samples, 
 void BeepDetector::process_audio(const int16_t *data, int num_samples) {
   uint32_t now = millis();
 
-  // Cooldown check — ignore beeps too soon after the last one
-  if (this->last_beep_time_ > 0 && (now - this->last_beep_time_) < (uint32_t)this->cooldown_ms_) {
-    return;
-  }
-
   if (this->calibrating_) {
-    // Calibration mode: sweep frequencies and track peak
+    // Calibration mode: sweep frequencies and track peak. Deliberately skips
+    // the cooldown check below — a beep detected just before calibration
+    // started (e.g. testing the AC, then long-pressing to calibrate) must
+    // not eat into the calibration window.
     for (int freq = CAL_FREQ_START; freq <= CAL_FREQ_END; freq += CAL_FREQ_STEP) {
       float mag = this->goertzel_magnitude(data, num_samples, (float)freq);
       if (mag > this->cal_peak_amplitude_) {
@@ -83,6 +81,11 @@ void BeepDetector::process_audio(const int16_t *data, int num_samples) {
         this->cal_peak_frequency_ = (float)freq;
       }
     }
+    return;
+  }
+
+  // Cooldown check — ignore beeps too soon after the last one
+  if (this->last_beep_time_ > 0 && (now - this->last_beep_time_) < (uint32_t)this->cooldown_ms_) {
     return;
   }
 
