@@ -19,6 +19,10 @@ substitutions:
   # doesn't respond (watch binary_sensor.ac_beep_confirmed for feedback):
   # generic, yan, yaa, yac, yac1fb9, yx1ff, yag
   gree_model: generic
+  # Idle time before the LCD backlight dims. Any button press or AC command
+  # (from the button, HA, or a synced physical remote) resets the timer and
+  # restores full brightness. Set to a large value (e.g. 24h) to disable.
+  screen_timeout: 30s
 
 esp32:
   board: m5stick-c
@@ -226,6 +230,18 @@ globals:
   - id: calibrating
     type: bool
     initial_value: "false"
+  - id: screen_dimmed
+    type: bool
+    initial_value: "false"
+
+# --- Screen Timeout ---
+# Dims the LCD backlight (via AXP192 LDO2) after ${screen_timeout} of no
+# activity, restoring it on the next wake_screen call. AXP192's LDO2 can only
+# be voltage-stepped, not switched fully off, so "off" here means dimmed to
+# minimum rather than a dark screen.
+on_boot:
+  then:
+    - script.execute: wake_screen
 
 # --- Climate: Gree IR Remote Transmitter ---
 climate:
@@ -239,6 +255,7 @@ climate:
       max_temperature: 30 °C
       temperature_step: 0.5 °C
     on_control:
+      - script.execute: wake_screen
       # Arm the beep detector before transmit_state() fires; this runs before
       # the IR is actually sent, so the confirmation window covers it.
       - binary_sensor.template.publish:
@@ -274,6 +291,7 @@ binary_sensor:
       min_length: 50ms
       max_length: 1000ms
       then:
+        - script.execute: wake_screen
         - if:
             condition:
               lambda: 'return !id(calibrating);'
@@ -288,6 +306,7 @@ binary_sensor:
       - timing:
           - ON for at least 3s
         then:
+          - script.execute: wake_screen
           - script.execute: start_calibration
 
 # --- Text Sensors ---
@@ -351,6 +370,30 @@ sensor:
 
 # --- Scripts ---
 script:
+  # Screen timeout: restores brightness (if dimmed) then waits ${screen_timeout}
+  # before dimming. mode: restart means calling this on every user activity
+  # cancels the pending dim and restarts the idle countdown.
+  - id: wake_screen
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(screen_dimmed);'
+          then:
+            - globals.set:
+                id: screen_dimmed
+                value: "false"
+            - lambda: |-
+                id(pmu).set_brightness(1.0f);
+                id(pmu).update();
+      - delay: ${screen_timeout}
+      - globals.set:
+          id: screen_dimmed
+          value: "true"
+      - lambda: |-
+          id(pmu).set_brightness(0.0f);
+          id(pmu).update();
+
   # Reports whether the last IR command got an acoustic beep back. No
   # retries — climate_ir has no hook to gate/resend the transmit.
   - id: confirm_ac_command

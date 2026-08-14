@@ -139,6 +139,8 @@ The wrapper:
 - **`substitutions.gree_model`** picks the Gree protocol dialect (the upstream defaults to `generic`).
 - **`wifi`** / **`api`** are dict-merged with the upstream blocks: your station credentials and API encryption key get added without removing the captive-portal AP fallback.
 
+Add `screen_timeout: 60s` (or similar) to `substitutions` if you want the LCD backlight to dim after a different amount of idle time — the upstream defaults to `30s`. Any button press or AC command restores full brightness.
+
 > Bump the tag in **both** `beep_detector_source` and `packages.upstream.ref` together when you want to upgrade.
 
 ### 5. Build and flash
@@ -312,6 +314,8 @@ automation:
 | Button A | Long press 3s | Enter beep calibration mode |
 
 Mode, target temperature, and fan speed are otherwise set via Home Assistant. Button B has no assigned function.
+
+Any button press or AC command wakes the LCD backlight if it's dimmed from being idle (see [`screen_timeout`](#4-create-my-ac-remoteyaml)).
 
 ---
 
