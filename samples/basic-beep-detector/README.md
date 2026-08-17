@@ -18,7 +18,7 @@ To build without cloning, point `beep_detector_source` at GitHub instead:
 
 ```yaml
 substitutions:
-  beep_detector_source: github://jeeyo/esp32-ir-ac-thermostat@main
+  beep_detector_source: github://jeeyo/esphome-beep-detector@main
 ```
 
 ## What it does

@@ -57,7 +57,7 @@ ENV III Unit (Grove)   M5StickC-Plus
 
 No toolchain needed. Download and flash in 2 minutes.
 
-1. Download the latest `ac-remote-tx-only.bin` from [GitHub Releases](https://github.com/jeeyo/esp32-ir-ac-thermostat/releases/latest)
+1. Download the latest `ac-remote-tx-only.bin` from [GitHub Releases](https://github.com/jeeyo/esphome-beep-detector/releases/latest)
 2. Open [ESPHome Web Installer](https://web.esphome.io/) in Chrome or Edge
 3. Click **Install** → select the `.bin` file → connect your M5StickC-Plus via USB-C
 4. On first boot, the device exposes a WiFi network named **AC-Remote-Fallback** (password `fallback123`). Connect to it with your phone; a captive portal opens where you enter your home WiFi credentials
@@ -84,7 +84,7 @@ pip install esphome
 
 ### 2. Pick a release tag
 
-Browse [Releases](https://github.com/jeeyo/esp32-ir-ac-thermostat/releases) and pick the version you want to build (e.g. `v0.1.0`). Use the same tag in **both** places below so the upstream YAML and the bundled `beep_detector` component come from the same commit.
+Browse [Releases](https://github.com/jeeyo/esphome-beep-detector/releases) and pick the version you want to build (e.g. `v0.1.0`). Use the same tag in **both** places below so the upstream YAML and the bundled `beep_detector` component come from the same commit.
 
 ### 3. Create `secrets.yaml`
 
@@ -110,14 +110,14 @@ This is the only config file you build with. It pulls `ac-remote.yaml` and the `
 ```yaml
 substitutions:
   # Tell the upstream config to fetch beep_detector from GitHub at the same tag.
-  beep_detector_source: github://jeeyo/esp32-ir-ac-thermostat@v0.1.0
+  beep_detector_source: github://jeeyo/esphome-beep-detector@v0.1.0
   ota_password: !secret ota_password
   # Gree IR dialect — see "Finding Your Gree Model" below.
   gree_model: generic
 
 packages:
   upstream:
-    url: https://github.com/jeeyo/esp32-ir-ac-thermostat
+    url: https://github.com/jeeyo/esphome-beep-detector
     ref: v0.1.0
     files: [samples/m5stickc-plus-gree-ac-remote-tx-only/ac-remote.yaml]
     refresh: 1d

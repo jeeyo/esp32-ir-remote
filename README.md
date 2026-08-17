@@ -14,7 +14,7 @@ Reference the component from `external_components:` in your ESPHome YAML. Pull i
 
 ```yaml
 external_components:
-  - source: github://jeeyo/esp32-ir-ac-thermostat@main
+  - source: github://jeeyo/esphome-beep-detector@main
     components: [beep_detector]
 ```
 

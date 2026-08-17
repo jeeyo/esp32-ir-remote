@@ -9,7 +9,7 @@ esp32:
 # --- External Components ---
 # Where to load the bundled `beep_detector` custom component from.
 # Default = local path (used when this repo is cloned, and by CI).
-# No-clone builds override to `github://jeeyo/esp32-ir-ac-thermostat@<tag>`.
+# No-clone builds override to `github://jeeyo/esphome-beep-detector@<tag>`.
 substitutions:
   beep_detector_source: ../../components
 
