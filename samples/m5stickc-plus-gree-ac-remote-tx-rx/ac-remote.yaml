@@ -403,6 +403,9 @@ script:
           ESP_LOGI("calibration", "Peak amplitude: %.0f", result.amplitude);
           ESP_LOGI("calibration", "Suggested amplitude_min: %.0f", amp_min);
           ESP_LOGI("calibration", "Suggested amplitude_max: %.0f", amp_max);
+
+          id(beep_det).set_amplitude_min(amp_min);
+          id(beep_det).set_amplitude_max(amp_max);
       - globals.set:
           id: calibrating
           value: "false"

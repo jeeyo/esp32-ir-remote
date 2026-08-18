@@ -2,7 +2,7 @@
 
 ESPHome firmware for M5StickC-Plus that acts as an IR remote transmitter for a Gree-protocol air conditioner (built for a Trane/Airlux/Electrolux "YT1F" universal remote unit), using ESPHome's built-in [`climate: platform: gree`](https://esphome.io/components/climate/gree/) component. The [`beep_detector`](../../) component gives passive, best-effort confirmation that the AC actually received a command. No cloud, no subscription — exposed as a full `climate` entity in Home Assistant.
 
-This variant uses an external Grove IR TX+RX module, so it supports **physical remote sync** — button presses on the AC's own remote update `climate.ac`'s state in Home Assistant. If you don't need that and would rather avoid the extra hardware, see [`samples/m5stickc-plus-gree-ac-remote-tx-only`](../m5stickc-plus-gree-ac-remote-tx-only) instead, which uses the M5StickC-Plus's built-in IR LED and frees the Grove port.
+This variant uses an external Grove IR TX+RX module. **Note:** ESPHome's `gree` climate platform is transmit-only — it has no code to decode or sync state from a received IR frame, so despite `receiver_id` being wired up in YAML, physical remote button presses do **not** update `climate.ac`'s Home Assistant state. `remote_receiver` still independently captures and dumps raw IR frames to the log (`dump: raw`), useful for diagnosing your AC's Gree dialect, but nothing consumes those frames to sync state. The only supported way to verify a command reached the AC is `beep_detector`'s acoustic confirmation. If you don't need the IR RX hardware for this, see [`samples/m5stickc-plus-gree-ac-remote-tx-only`](../m5stickc-plus-gree-ac-remote-tx-only) instead, which uses the M5StickC-Plus's built-in IR LED and frees the Grove port.
 
 This is one worked example of using `beep_detector`; see the [repo README](../../README.md) for the component itself, and [`samples/basic-beep-detector`](../basic-beep-detector) for a minimal, hardware-agnostic starting point.
 
@@ -10,7 +10,7 @@ This is one worked example of using `beep_detector`; see the [repo README](../..
 
 - **Gree Protocol Climate Entity** — full mode/temperature/fan control via ESPHome's built-in `climate_ir` Gree platform; no manual IR code learning required
 - **Acoustic Confirmation** — listens for the AC's confirmation beep after each command and reports confirmed/unconfirmed (best-effort, no retries)
-- **Physical Remote Sync** — the IR receiver is bound directly into the Gree climate component, so button presses on the AC's own remote update Home Assistant's state automatically
+- **Raw IR Capture** — the IR receiver dumps raw pulse timings to the log (`dump: raw`), useful for diagnosing your AC's Gree dialect. It does **not** sync physical-remote button presses to Home Assistant state — `climate: platform: gree` is transmit-only and has no decode/receive logic, so `receiver_id` here has no effect on `climate.ac`
 - **Beep Calibration** — sweep 1–8 kHz to find your AC's exact beep frequency and amplitude
 - **Temperature / Humidity / Pressure** — onboard ENV HAT sensors exposed to Home Assistant
 - **On-device Display** — shows AC mode, target temperature, beep confirmation, and status
@@ -193,12 +193,10 @@ The beep detector needs to be calibrated first (see below) for this to be reliab
 If commands never confirm (check `binary_sensor.ac_beep_confirmed`), the beep detector needs calibrating for your specific AC unit and room. This wraps the generic calibration flow described in the [component README](../../README.md#calibration) with a physical button and on-device display feedback:
 
 1. Long-press **Button A** for 3 seconds — display shows `CALIBRATE`
-2. Use the physical remote to trigger your AC so it beeps
+2. Use the physical remote to trigger your AC so it beeps (or send a command from Home Assistant — either way just needs the AC to beep, no HA state sync involved)
 3. Wait for the 10-second calibration window to complete
-4. Open logs (`esphome logs ac-remote.yaml`) and note:
-   - `Peak frequency` → update `target_frequency` in `beep_detector:` block
-   - `Suggested amplitude_min` / `amplitude_max` → update those fields
-5. Reflash with updated values
+4. The amplitude window (`amplitude_min` / `amplitude_max`) is applied automatically at runtime — no reflash needed for that
+5. Open logs (`esphome logs ac-remote.yaml`) and check `Peak frequency`. If it's far from the default `target_frequency` (4000 Hz), update `target_frequency` in the `beep_detector:` block and reflash — frequency is not applied live
 
 ---
 
@@ -328,9 +326,9 @@ Mode, target temperature, and fan speed are otherwise set via Home Assistant. Bu
 
 `climate_ir`'s `transmit_state()` runs synchronously inside the platform's `control()`, with no per-command retry/gate hook exposed to YAML — `beep_detector` here is strictly a passive confirmation signal, not a retry mechanism.
 
-### Physical Remote Sync
+### Physical Remote Sync — not supported
 
-The IR receiver (GPIO33) is bound to `climate.ac` via `receiver_id`, so `climate_ir` decodes commands sent by the AC's own physical remote and updates `climate.ac`'s Home Assistant state to match — no beep or custom logic involved.
+`receiver_id: ir_receiver` is set on `climate.ac`, but ESPHome's `gree` platform (a `climate_ir::ClimateIR` subclass) has no receive/decode logic at all — it's transmit-only. The IR receiver (GPIO33) still runs and dumps raw pulse timings to the log via `dump: raw`, but nothing wires those frames back into `climate.ac`'s state. Physical remote button presses are invisible to Home Assistant; only commands sent from HA (and confirmed acoustically via `beep_detector`) are reflected in `climate.ac`.
 
 ### Amplitude Window
 
@@ -355,8 +353,7 @@ Multiple identical AC units in adjacent rooms produce the same beep frequency. T
 - Position the device closer to your target AC unit
 
 **Physical remote presses don't sync HA state:**
-- Confirm the AC's remote uses the same `gree_model` dialect configured on the device — a mismatched dialect means `climate_ir` can't decode it
-- Check `esphome logs ac-remote.yaml` with `dump: raw` (enabled on `remote_receiver`) to confirm the receiver sees pulses at all when the remote is pressed
+- This is expected — see [Physical Remote Sync](#physical-remote-sync--not-supported) above. ESPHome's `gree` platform doesn't decode/sync from a receiver at all; `dump: raw` on `remote_receiver` is diagnostic-only (useful for identifying your AC's IR dialect), it doesn't feed `climate.ac`
 
 **Temperature reading seems off:**
 - The SHT30 on the ENV HAT can read 1–2 °C high due to heat from the M5 body

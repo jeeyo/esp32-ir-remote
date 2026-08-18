@@ -38,7 +38,11 @@ jobs:
       combined-name: ac-remote-tx-rx
 
   upload-tx-rx:
-    needs: build-tx-rx
+    # Serialized after upload-tx-only: both jobs upload assets to the same GitHub
+    # release for this tag via a non-atomic list/create/upload sequence in the
+    # shared esphome/workflows upload action. Running them in parallel races on
+    # that same release object (observed as a spurious 404 on delete/upload).
+    needs: [build-tx-rx, upload-tx-only]
     uses: esphome/workflows/.github/workflows/upload-to-gh-release.yml@main
     permissions:
       contents: write
