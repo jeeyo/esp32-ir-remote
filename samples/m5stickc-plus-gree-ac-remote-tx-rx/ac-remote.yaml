@@ -3,6 +3,11 @@ esphome:
   friendly_name: "AC Remote"
   platformio_options:
     board_build.f_cpu: 240000000L
+  # Screen timeout: starts the wake_screen idle-countdown script once all
+  # components (including AXP192) have finished setup().
+  on_boot:
+    then:
+      - script.execute: wake_screen
 
 # --- Substitutions ---
 # Override these in a wrapper YAML to build without cloning the repo and to
@@ -243,15 +248,6 @@ globals:
     type: bool
     initial_value: "false"
 
-# --- Screen Timeout ---
-# Dims the LCD backlight (via AXP192 LDO2) after ${screen_timeout} of no
-# activity, restoring it on the next wake_screen call. AXP192's LDO2 can only
-# be voltage-stepped, not switched fully off, so "off" here means dimmed to
-# minimum rather than a dark screen.
-on_boot:
-  then:
-    - script.execute: wake_screen
-
 # --- Climate: Gree IR Remote Transmitter ---
 climate:
   - platform: gree
@@ -379,7 +375,9 @@ sensor:
 script:
   # Screen timeout: restores brightness (if dimmed) then waits ${screen_timeout}
   # before dimming. mode: restart means calling this on every user activity
-  # cancels the pending dim and restarts the idle countdown.
+  # cancels the pending dim and restarts the idle countdown. AXP192's LDO2
+  # backlight rail can only be voltage-stepped, not switched fully off, so
+  # "off" here means dimmed to minimum rather than a dark screen.
   - id: wake_screen
     mode: restart
     then:
