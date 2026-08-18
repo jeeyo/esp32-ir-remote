@@ -197,10 +197,8 @@ If commands never confirm (check `binary_sensor.ac_beep_confirmed`), the beep de
 1. Long-press **Button A** for 3 seconds — display shows `CALIBRATE`
 2. Use the physical remote to trigger your AC so it beeps
 3. Wait for the 10-second calibration window to complete
-4. Open logs (`esphome logs ac-remote.yaml`) and note:
-   - `Peak frequency` → update `target_frequency` in `beep_detector:` block
-   - `Suggested amplitude_min` / `amplitude_max` → update those fields
-5. Reflash with updated values
+4. The detected peak frequency and a ±30% amplitude window around the peak amplitude are applied to the running detector immediately — no reflash needed. `text_sensor.last_action` reports "Calibration applied" (or "Calibration failed — no beep heard, try again" if nothing was detected in the window)
+5. Open logs (`esphome logs ac-remote.yaml`) if you want to see the exact values that were applied, or to diagnose a failed calibration
 
 ---
 

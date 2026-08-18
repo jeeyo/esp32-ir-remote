@@ -437,20 +437,28 @@ script:
           id(beep_frequency_sensor).publish_state(result.frequency);
           id(beep_amplitude_sensor).publish_state(result.amplitude);
 
-          // Suggest amplitude window (±30%)
-          float amp_min = result.amplitude * 0.7f;
-          float amp_max = result.amplitude * 1.3f;
-          ESP_LOGI("calibration", "Peak frequency: %.0f Hz", result.frequency);
-          ESP_LOGI("calibration", "Peak amplitude: %.0f", result.amplitude);
-          ESP_LOGI("calibration", "Suggested amplitude_min: %.0f", amp_min);
-          ESP_LOGI("calibration", "Suggested amplitude_max: %.0f", amp_max);
-
-          id(beep_det).set_amplitude_min(amp_min);
-          id(beep_det).set_amplitude_max(amp_max);
+          if (result.amplitude > 0.0f) {
+            // Apply the calibration results to the live detector immediately
+            // (±30% amplitude window around the peak) — no reflash needed.
+            float amp_min = result.amplitude * 0.7f;
+            float amp_max = result.amplitude * 1.3f;
+            id(beep_det).set_target_frequency(result.frequency);
+            id(beep_det).set_amplitude_min(amp_min);
+            id(beep_det).set_amplitude_max(amp_max);
+            ESP_LOGI("calibration", "Peak frequency: %.0f Hz", result.frequency);
+            ESP_LOGI("calibration", "Peak amplitude: %.0f", result.amplitude);
+            ESP_LOGI("calibration", "Applied amplitude_min: %.0f", amp_min);
+            ESP_LOGI("calibration", "Applied amplitude_max: %.0f", amp_max);
+          } else {
+            ESP_LOGW("calibration", "No beep detected during calibration window — keeping previous settings");
+          }
       - globals.set:
           id: calibrating
           value: "false"
       - lambda: 'id(beep_det).set_paused(false);'
       - text_sensor.template.publish:
           id: last_action_text
-          state: "Calibration done — check logs"
+          state: !lambda |-
+            return id(beep_amplitude_sensor).state > 0.0f
+              ? "Calibration applied — detector updated"
+              : "Calibration failed — no beep heard, try again";
