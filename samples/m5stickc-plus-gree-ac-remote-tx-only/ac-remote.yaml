@@ -397,7 +397,13 @@ script:
   - id: confirm_ac_command
     mode: restart
     then:
-      - delay: 3s
+      # Stop waiting as soon as the beep lands instead of always sitting out
+      # the full 3s — on_beep_detected already publishes beep_confirmed the
+      # moment a valid beep is measured, so this just catches up to it.
+      - wait_until:
+          condition:
+            binary_sensor.is_on: beep_confirmed
+          timeout: 3s
       - lambda: 'id(beep_det).set_self_triggered(false);'
       - if:
           condition:
