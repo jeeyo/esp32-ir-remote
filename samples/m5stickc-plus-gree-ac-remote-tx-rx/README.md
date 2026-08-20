@@ -139,6 +139,8 @@ The wrapper:
 - **`substitutions.gree_model`** picks the Gree protocol dialect (the upstream defaults to `generic`).
 - **`wifi`** / **`api`** are dict-merged with the upstream blocks: your station credentials and API encryption key get added without removing the captive-portal AP fallback.
 
+Add `screen_timeout: 60s` (or similar) to `substitutions` if you want the LCD backlight to dim after a different amount of idle time — the upstream defaults to `30s`. Any button press or AC command restores full brightness.
+
 > Bump the tag in **both** `beep_detector_source` and `packages.upstream.ref` together when you want to upgrade.
 
 ### 5. Build and flash
@@ -195,8 +197,8 @@ If commands never confirm (check `binary_sensor.ac_beep_confirmed`), the beep de
 1. Long-press **Button A** for 3 seconds — display shows `CALIBRATE`
 2. Use the physical remote to trigger your AC so it beeps (or send a command from Home Assistant — either way just needs the AC to beep, no HA state sync involved)
 3. Wait for the 10-second calibration window to complete
-4. The amplitude window (`amplitude_min` / `amplitude_max`) is applied automatically at runtime — no reflash needed for that
-5. Open logs (`esphome logs ac-remote.yaml`) and check `Peak frequency`. If it's far from the default `target_frequency` (4000 Hz), update `target_frequency` in the `beep_detector:` block and reflash — frequency is not applied live
+4. The detected peak frequency and a ±30% amplitude window around the peak amplitude are applied to the running detector immediately — no reflash needed. `text_sensor.last_action` reports "Calibration applied" (or "Calibration failed — no beep heard, try again" if nothing was detected in the window)
+5. Open logs (`esphome logs ac-remote.yaml`) if you want to see the exact values that were applied, or to diagnose a failed calibration
 
 ---
 
@@ -310,6 +312,8 @@ automation:
 | Button A | Long press 3s | Enter beep calibration mode |
 
 Mode, target temperature, and fan speed are otherwise set via Home Assistant. Button B has no assigned function.
+
+Any button press or AC command (including from the synced physical remote) wakes the LCD backlight if it's dimmed from being idle (see [`screen_timeout`](#4-create-my-ac-remoteyaml)).
 
 ---
 

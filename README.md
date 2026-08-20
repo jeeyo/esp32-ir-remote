@@ -67,7 +67,8 @@ Beyond the YAML schema, `beep_detector` exposes a few methods for use in `lambda
 | Method | Purpose |
 |---|---|
 | `id(beep_det).start_calibration()` | Begin a calibration sweep (see below) |
-| `id(beep_det).finish_calibration()` | End the sweep, returns a `CalibrationResult{ float frequency; float amplitude; }` with the loudest frequency seen |
+| `id(beep_det).finish_calibration()` | End the sweep, returns a `CalibrationResult{ float frequency; float amplitude; }` with the loudest frequency seen. Does *not* change detector state on its own — see Calibration below |
+| `id(beep_det).set_target_frequency(float)` / `set_amplitude_min(float)` / `set_amplitude_max(float)` | Override the detection window at runtime — e.g. to apply a `finish_calibration()` result immediately, without a reflash |
 | `id(beep_det).set_paused(bool)` / `is_paused()` | Suspend/resume detection (e.g. while calibrating, or during a known-noisy period) |
 | `id(beep_det).set_self_triggered(bool)` / `is_self_triggered()` | Free-form flag with no built-in behavior — useful for distinguishing "a beep I caused" from "a beep from somewhere else" in your own automations |
 
@@ -77,8 +78,8 @@ Rather than guessing `target_frequency`/`amplitude_min`/`amplitude_max` for a sp
 
 1. Call `id(beep_det).start_calibration()` (e.g. from a button press or a script)
 2. Trigger the real-world beep within the next ~10 seconds
-3. Call `id(beep_det).finish_calibration()` — logs the peak frequency/amplitude seen during the sweep, plus a suggested `amplitude_min`/`amplitude_max` (±30% of peak)
-4. Copy those values into your `beep_detector:` config and reflash
+3. Call `id(beep_det).finish_calibration()` — returns the peak frequency/amplitude seen during the sweep. `finish_calibration()` only measures; it never touches `target_frequency`/`amplitude_min`/`amplitude_max` itself, so detection keeps using whatever was configured until you apply the result
+4. Apply the result — either at runtime via `set_target_frequency()` / `set_amplitude_min()` / `set_amplitude_max()` (±30% of peak amplitude is a reasonable window) so detection works immediately with no reflash, or by copying the values into your `beep_detector:` config and reflashing if you want them to persist as the new defaults across reboots. Guard against a zero-amplitude result (nothing was heard during the window) — applying it would zero out the detection window instead of leaving the previous one intact.
 
 The [`samples/m5stickc-plus-gree-ac-remote-tx-only`](samples/m5stickc-plus-gree-ac-remote-tx-only) sample wires this up to a physical button and 10-second timer if you want a working reference.
 
